@@ -1,0 +1,296 @@
+import os
+import re
+import sys
+import logging
+
+# Configuração do sistema de logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(levelname)s] %(message)s'
+)
+
+# Estrutura de dados: lista de dicionários com registros de exemplo
+pessoas = [
+    {
+        'nome': 'João Silva',
+        'idade': 30,
+        'cidade': 'São Paulo',
+        'uf': 'SP',
+        'informacao_complementar': None
+    },
+    {
+        'nome': 'Maria Santos',
+        'idade': 25,
+        'cidade': 'Rio de Janeiro',
+        'uf': 'RJ',
+        'informacao_complementar': None
+    },
+    {
+        'nome': 'Pedro Souza',
+        'idade': 42,
+        'cidade': 'Belo Horizonte',
+        'uf': 'MG',
+        'informacao_complementar': None
+    },
+    {
+        'nome': 'Ana Costa',
+        'idade': 35,
+        'cidade': 'Salvador',
+        'uf': 'BA',
+        'informacao_complementar': None
+    },
+    {
+        'nome': 'Lucas Pereira',
+        'idade': 28,
+        'cidade': 'Curitiba',
+        'uf': 'PR',
+        'informacao_complementar': None
+    }
+]
+
+# Tupla de UFs para validação rápida (usando set para eficiência)
+ufs_validas = {
+    'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
+    'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
+}
+
+# --- Constantes e Variáveis para Cores ---
+cores_ansi = ["\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m"]
+cor_atual_index = 0
+
+BANNER = (
+"░██████╗██╗░██████╗████████╗███████╗███╗░░░███╗░█████╗░  ██████╗░███████╗\n"
+"██╔════╝██║██╔════╝╚══██╔══╝██╔════╝████╗░████║██╔══██╗  ██╔══██╗██╔════╝\n"
+"╚█████╗░██║╚█████╗░░░░██║░░░█████╗░░██╔████╔██║███████║  ██║░░██║█████╗░░\n"
+"░╚═══██╗██║░╚═══██╗░░░██║░░░██╔══╝░░██║╚██╔╝██║██╔══██║  ██║░░██║██╔══╝░░\n"
+"██████╔╝██║██████╔╝░░░██║░░░███████╗██║░╚═╝░██║██║░░██║  ██████╔╝███████╗\n"
+"╚═════╝░╚═╝╚═════╝░░░░╚═╝░░░╚══════╝╚═╝░░░░░╚═╝╚═╝░░╚═╝  ╚═════╝░╚══════╝\n"
+"\n"
+"░██████╗░███████╗██████╗░███████╗███╗░░██╗░█████╗░██╗░█████╗░███╗░░░███╗███████╗███╗░░██╗████████╗░█████╗░\n"
+"██╔════╝░██╔════╝██╔══██╗██╔════╝████╗░██║██╔══██╗██║██╔══██╗████╗░████║██╔════╝████╗░██║╚══██╔══╝██╔══██╗\n"
+"██║░░██╗░█████╗░░██████╔╝█████╗░░██╔██╗██║██║░░╚═╝██║███████║██╔████╔██║█████╗░░██╔██╗██║░░░██║░░░██║░░██║\n"
+"██║░░╚██╗██╔══╝░░██╔══██╗██╔══╝░░██║╚████║██║░░██╗██║██╔══██║██║╚██╔╝██║██╔══╝░░██║╚████║░░░██║░░░██║░░██║\n"
+"╚██████╔╝███████╗██║░░██║███████╗██║░╚███║╚█████╔╝██║██║░░██║██║░╚═╝░██║███████╗██║░╚███║░░░██║░░░╚█████╔╝\n"
+"░╚═════╝░╚══════╝╚═╝░░╚═╝╚══════╝╚═╝░░╚══╝░╚════╝░╚═╝╚═╝░░╚═╝╚═╝░░░░░╚═╝╚══════╝╚═╝░░╚══╝░░░╚═╝░░░░╚════╝░\n"
+"\n"
+"██████╗░███████╗  ██████╗░███████╗░██████╗░██████╗░█████╗░░█████╗░░██████╗\n"
+"██╔══██╗██╔════╝  ██╔══██╗██╔════╝██╔════╝██╔════╝██╔══██╗██╔══██╗██╔════╝\n"
+"██║░░██║█████╗░░  ██████╔╝█████╗░░╚█████╗░╚█████╗░██║░░██║███████║╚█████╗░\n"
+"██║░░██║██╔══╝░░  ██╔═══╝░██╔══╝░░░╚═══██╗░╚═══██╗██║░░██║██╔══██║░╚═══██╗\n"
+"██████╔╝███████╗  ██║░░░░░███████╗██████╔╝██████╔╝╚█████╔╝██║░░██║██████╔╝\n"
+"╚═════╝░╚══════╝  ╚═╝░░░░░╚══════╝╚═════╝░╚═════╝░░╚════╝░╚═╝░░╚═╝╚═════╝░\n"
+)
+
+# --- Funções de Utilitário ---
+
+def limpar_tela():
+    """Limpa o console e exibe o banner colorido."""
+    os.system('cls' if os.name == 'nt' else 'clear')
+    global cor_atual_index
+    print(cores_ansi[cor_atual_index] + BANNER)
+    cor_atual_index = (cor_atual_index + 1) % len(cores_ansi)
+    print("\033[0m")
+
+def pausar():
+    """Pausa o programa e espera o usuário pressionar Enter."""
+    input("\nPressione ENTER para voltar ao menu principal...")
+
+def _exibir_mensagem_de_status(mensagem, nivel_log='info'):
+    """Exibe uma mensagem para o usuário e a registra no log."""
+    print(mensagem)
+    if nivel_log == 'info':
+        logging.info(mensagem)
+    elif nivel_log == 'erro':
+        logging.error(mensagem)
+    elif nivel_log == 'alerta':
+        logging.warning(mensagem)
+
+# --- Funções de Validação ---
+
+def validar_string(texto, campo):
+    if not re.fullmatch(r"[a-zA-Z\s]+", texto):
+        raise ValueError(f"O campo '{campo}' deve conter apenas letras e espaços.")
+    return texto.strip().title()
+
+def validar_idade(idade):
+    if not idade.isdigit():
+        raise ValueError("A idade deve ser um número inteiro.")
+    
+    idade = int(idade)
+    if not 0 < idade <= 125:
+        raise ValueError("A idade deve estar entre 1 e 125.")
+    
+    return idade
+
+def validar_uf(uf):
+    if not isinstance(uf, str) or len(uf) != 2 or uf.upper() not in ufs_validas:
+        raise ValueError("A UF deve ser uma string de 2 letras e existir na lista de estados brasileiros.")
+    return uf.upper()
+
+# --- Funções do CRUD (Create, Read, Update, Delete) ---
+
+def _exibir_registros_formatados(registros, titulo):
+    """Exibe uma lista de registros em formato de tabela."""
+    if not registros:
+        _exibir_mensagem_de_status(f"Nenhum registro '{titulo}' encontrado.", 'alerta')
+        return
+    
+    mostrar_info_complementar = any(p['informacao_complementar'] for p in registros)
+    largura_tabela = 65 + (40 if mostrar_info_complementar else 0)
+    
+    cabecalho = f"{'Nome':<25}{'Idade':<10}{'Cidade':<25}{'UF':<5}"
+    if mostrar_info_complementar:
+        cabecalho += f"{'Info Complementar':<40}"
+    
+    print("\n" + "="*largura_tabela)
+    print(" " * (largura_tabela // 2 - (len(titulo) // 2)) + titulo)
+    print("="*largura_tabela)
+    print(cabecalho)
+    print("-" * largura_tabela)
+    
+    for pessoa in registros:
+        linha = f"{pessoa['nome']:<25}{pessoa['idade']:<10}{pessoa['cidade']:<25}{pessoa['uf']:<5}"
+        if mostrar_info_complementar:
+            info_comp = pessoa['informacao_complementar'] or " "
+            linha += f"{info_comp:<40}"
+        print(linha)
+    
+    print("="*largura_tabela)
+
+def mostrar_todos_registros():
+    limpar_tela()
+    _exibir_registros_formatados(pessoas, "Todos os Registros")
+    pausar()
+
+def adicionar_registro():
+    limpar_tela()
+    novo_registro = {'informacao_complementar': None}
+    campos = {
+        'nome': validar_string,
+        'idade': validar_idade,
+        'cidade': validar_string,
+        'UF': validar_uf
+    }
+    
+    for campo, validador in campos.items():
+        while True:
+            try:
+                valor = input(f"Digite o {campo}: ")
+                if campo in ['nome', 'cidade']:
+                    novo_registro[campo.lower()] = validador(valor, campo)
+                else:
+                    novo_registro[campo.lower()] = validador(valor)
+                break
+            except ValueError as e:
+                _exibir_mensagem_de_status(f"Erro: {e}. Por favor, tente novamente.", 'erro')
+
+    pessoas.append(novo_registro)
+    _exibir_mensagem_de_status(f"Dados de '{novo_registro['nome']}' adicionados com sucesso!", 'info')
+    pausar()
+
+def buscar_registro():
+    limpar_tela()
+    nome_busca = input("Digite o nome da pessoa a ser buscada: ").strip().title()
+    registro_encontrado = next((p for p in pessoas if p['nome'] == nome_busca), None)
+    
+    if registro_encontrado:
+        _exibir_registros_formatados([registro_encontrado], f"Registro de '{nome_busca}'")
+    else:
+        _exibir_mensagem_de_status(f"Pessoa '{nome_busca}' não encontrada.", 'alerta')
+    
+    pausar()
+
+def atualizar_ou_excluir_registro():
+    limpar_tela()
+    nome_busca = input("Digite o nome da pessoa para atualizar/excluir: ").strip().title()
+    registro_encontrado = next((p for p in pessoas if p['nome'] == nome_busca), None)
+    
+    if not registro_encontrado:
+        _exibir_mensagem_de_status(f"Pessoa '{nome_busca}' não encontrada.", 'alerta')
+        pausar()
+        return
+
+    _exibir_registros_formatados([registro_encontrado], f"Registro de '{nome_busca}'")
+
+    acao = input("\nDeseja (a)tualizar ou (e)xcluir este registro? (a/e): ").lower()
+    
+    if acao == 'a':
+        try:
+            print("\nDeixe o campo vazio para não alterá-lo.")
+            campos_atualizaveis = {
+                'idade': validar_idade,
+                'cidade': validar_string,
+                'UF': validar_uf
+            }
+            for campo, validador in campos_atualizaveis.items():
+                while True:
+                    novo_valor = input(f"Nova {campo} (atual: {registro_encontrado[campo.lower()]}): ")
+                    if not novo_valor:
+                        break
+                    try:
+                        if campo in ['cidade', 'nome']:
+                            registro_encontrado[campo.lower()] = validador(novo_valor, campo)
+                        else:
+                            registro_encontrado[campo.lower()] = validador(novo_valor)
+                        break
+                    except ValueError as e:
+                        _exibir_mensagem_de_status(f"Erro: {e}. Por favor, tente novamente.", 'erro')
+            
+            info_atual = registro_encontrado['informacao_complementar'] or "Vazio"
+            nova_info = input(f"Nova Informação Complementar (atual: {info_atual}): ")
+            if nova_info:
+                registro_encontrado['informacao_complementar'] = nova_info
+            elif nova_info == '':
+                registro_encontrado['informacao_complementar'] = None
+
+            _exibir_mensagem_de_status(f"Registro de '{registro_encontrado['nome']}' atualizado com sucesso.", 'info')
+        except ValueError as e:
+            _exibir_mensagem_de_status(f"Erro inesperado ao atualizar registro de '{registro_encontrado['nome']}': {e}", 'erro')
+    elif acao == 'e':
+        confirmar = input(f"Tem certeza que deseja excluir o registro de '{registro_encontrado['nome']}'? (s/n): ").lower()
+        if confirmar == 's':
+            pessoas.remove(registro_encontrado)
+            _exibir_mensagem_de_status(f"Registro de '{nome_busca}' excluído com sucesso.", 'info')
+        else:
+            _exibir_mensagem_de_status(f"Exclusão do registro de '{nome_busca}' cancelada.", 'info')
+    else:
+        _exibir_mensagem_de_status("Opção inválida.", 'alerta')
+    
+    pausar()
+
+def menu():
+    """Exibe o menu de opções e controla o fluxo do programa."""
+    logging.info("Sistema iniciado.")
+    while True:
+        limpar_tela()
+        print("\n" + "="*30)
+        print(" Menu Principal ")
+        print("="*30)
+        print("1. Mostrar todos os registros")
+        print("2. Adicionar novo registro")
+        print("3. Buscar registro")
+        print("4. Atualizar / Excluir registro")
+        print("5. Sair")
+        print("="*30)
+
+        escolha = input("Escolha uma opção: ")
+
+        match escolha:
+            case '1':
+                mostrar_todos_registros()
+            case '2':
+                adicionar_registro()
+            case '3':
+                buscar_registro()
+            case '4':
+                atualizar_ou_excluir_registro()
+            case '5':
+                limpar_tela()
+                _exibir_mensagem_de_status("Saindo do sistema. Até mais!", 'info')
+                break
+            case _:
+                _exibir_mensagem_de_status("Opção inválida. Por favor, escolha um número de 1 a 5.", 'alerta')
+                pausar()
+
+if __name__ == "__main__":
+    menu()
