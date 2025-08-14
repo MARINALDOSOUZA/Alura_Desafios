@@ -1,0 +1,238 @@
+import os
+import sys
+import random
+import requests
+import logging
+import re
+from bs4 import BeautifulSoup
+import numpy as np
+from collections import Counter
+
+# Tenta importar msvcrt para Windows, ou termios/tty para Unix-like
+try:
+    import msvcrt
+except ImportError:
+    import termios
+    import tty
+
+# === CONFIGURAR LOG ===
+logging.basicConfig(filename='app.log', level=logging.INFO, format='%(asctime)s - %(message)s')
+
+# === VARIÁVEIS GLOBAIS ===
+ALURA_URL = "https://www.alura.com.br/sobre"
+ALURA_HTML = ""
+
+
+# === UTILITÁRIOS ===
+
+def limpar_tela():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def esperar_acao():
+    """Aguarda ENTER ou ESC, compatível com Windows e Unix-like."""
+    if os.name == 'nt':  # Windows
+        while True:
+            tecla = msvcrt.getch()
+            match tecla:
+                case b'\r': return 'enter'
+                case b'\x1b': return 'esc'
+    else:  # Unix-like (Linux, macOS)
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(sys.stdin.fileno())
+            while True:
+                tecla = sys.stdin.read(1)
+                match tecla:
+                    case '\r' | '\n': return 'enter'
+                    case '\x1b': return 'esc'
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+def baixar_conteudo(url):
+    """Baixa o conteúdo de uma URL com tratamento de erros."""
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        return response.text
+    except requests.RequestException as e:
+        logging.error(f"Erro ao baixar conteúdo: {e}")
+        return ""
+
+def extrair_palavras(texto):
+    """
+    Extrai palavras de um texto, ignorando números e pontuação,
+    e reconhecendo caracteres acentuados e cedilha.
+    """
+    # Remove todos os caracteres que não são letras ou espaços
+    texto_limpo = re.sub(r'[^a-záàâãéêíóôõúüç\s]+', ' ', texto, flags=re.I)
+    # Extrai as palavras restantes e retorna como uma lista
+    return texto_limpo.lower().split()
+
+def gerar_dicionario_quadrados(qtd=5):
+    """Gera um dicionário com números aleatórios e seus quadrados."""
+    numeros = np.random.randint(1, 101, size=qtd, dtype=np.int16)
+    quadrados = np.power(numeros, 2, dtype=np.int32)
+    return dict(zip(numeros.tolist(), quadrados.tolist()))
+
+def criar_dicionario_aleatorio(palavras, qtd=10):
+    """Cria um dicionário a partir de palavras únicas e valores aleatórios."""
+    palavras_unicas = sorted(set(palavras))
+    if len(palavras_unicas) < qtd:
+        raise ValueError("Não há palavras suficientes para criar o dicionário.")
+    selecionadas = random.sample(palavras_unicas, qtd)
+    valores = np.random.randint(1, 101, size=qtd, dtype=np.int8)
+    return dict(zip(selecionadas, valores.tolist()))
+
+def extrair_frases_curtas(html, min_len=100, max_len=200):
+    """Extrai frases de tamanho específico de um HTML."""
+    soup = BeautifulSoup(html, "html.parser")
+    tags = soup.find_all(['p', 'span', 'h1', 'h2', 'li'])
+    return [
+        tag.get_text(strip=True)
+        for tag in tags
+        if min_len <= len(tag.get_text(strip=True)) <= max_len
+    ]
+
+def contar_frequencia_palavras(texto):
+    """Conta a frequência de palavras em um texto usando Counter."""
+    palavras = extrair_palavras(texto)
+    return Counter(palavras)
+
+
+# === FUNCIONALIDADES ===
+
+def menu_generico(titulo, acao_callback, html=None):
+    """
+    Função genérica para gerenciar o loop de menus.
+    Recebe um título e uma função de callback para executar a ação principal.
+    """
+    while True:
+        limpar_tela()
+        if not html and titulo != "Dicionário de Quadrados Aleatórios":
+            print("Erro: Não foi possível baixar o conteúdo da URL.")
+            input("Pressione ENTER para continuar...")
+            limpar_tela()
+            return
+
+        print(f"📌 {titulo}:")
+        acao_callback(html)
+        print("\n[ENTER] para repetir, [ESC] para voltar ao menu principal")
+        
+        match esperar_acao():
+            case 'esc':
+                limpar_tela()
+                break
+            case 'enter':
+                continue
+
+def acao_quadrados(html=None):
+    print(gerar_dicionario_quadrados())
+
+def acao_procurar_chaves(html):
+    palavras = extrair_palavras(html)
+    try:
+        dicionario = criar_dicionario_aleatorio(palavras)
+        print(dicionario)
+        while True:
+            print("\nDigite a chave a ser procurada:")
+            chave = input("→ ").lower()
+            if chave:
+                if chave in dicionario:
+                    print(f'✅ A chave "{chave}" existe com valor: {dicionario[chave]}')
+                else:
+                    print(f'❌ A chave "{chave}" não foi encontrada.')
+            print("[ENTER] para procurar nova chave, [ESC] para voltar à exibição do dicionário")
+            if esperar_acao() == 'esc':
+                break
+    except ValueError as e:
+        print(f"Erro: {e}")
+        input("Pressione ENTER para continuar...")
+
+def acao_contar_palavras(html):
+    frases = extrair_frases_curtas(html)
+    if frases:
+        frase = random.choice(frases)
+        print("Frase selecionada:\n", frase)
+        print("\nFrequência de palavras:")
+        frequencia = contar_frequencia_palavras(frase)
+        print(frequencia)
+    else:
+        print("Nenhuma frase encontrada.")
+
+
+# === MENU PRINCIPAL ===
+
+def main_menu():
+    """Menu principal que coordena as funcionalidades."""
+    global ALURA_HTML
+    print("Baixando conteúdo da URL...")
+    ALURA_HTML = baixar_conteudo(ALURA_URL)
+    limpar_tela()
+
+    while True:
+        print("====== MENU PRINCIPAL ======")
+        print("1 - Cálculo dos Quadrados")
+        print("2 - Procurar Chaves")
+        print("3 - Contar Palavras")
+        print("4 - Sair")
+        opcao = input("\nEscolha uma opção: ")
+
+        match opcao:
+            case '1':
+                menu_generico("Dicionário de Quadrados Aleatórios", acao_quadrados)
+            case '2':
+                # A função 'acao_procurar_chaves' tem seu próprio loop interno, então não usamos o menu_generico aqui
+                menu_procurar_chaves_refatorado(ALURA_HTML)
+            case '3':
+                menu_generico("Frequência de Palavras", acao_contar_palavras, html=ALURA_HTML)
+            case '4':
+                print("Saindo...")
+                logging.info("Aplicação encerrada pelo usuário.")
+                break
+            case _:
+                print("Opção inválida.")
+                input("Pressione ENTER para continuar...")
+                limpar_tela()
+
+# Ação do menu 2 precisa de um tratamento especial por ter um loop de input aninhado
+def menu_procurar_chaves_refatorado(html):
+    if not html:
+        print("Erro: Não foi possível baixar o conteúdo da URL.")
+        input("Pressione ENTER para continuar...")
+        limpar_tela()
+        return
+
+    palavras = extrair_palavras(html)
+
+    try:
+        dicionario = criar_dicionario_aleatorio(palavras)
+    except ValueError as e:
+        print(f"Erro: {e}")
+        input("Pressione ENTER para continuar...")
+        limpar_tela()
+        return
+
+    while True:
+        limpar_tela()
+        print("📌 Dicionário Aleatório de Palavras:")
+        print(dicionario)
+        print("\nDigite a chave a ser procurada:")
+        chave = input("→ ").lower()
+        if chave:
+            if chave in dicionario:
+                print(f'✅ A chave "{chave}" existe com valor: {dicionario[chave]}')
+            else:
+                print(f'❌ A chave "{chave}" não foi encontrada.')
+        
+        print("\n[ENTER] para procurar nova chave, [ESC] para voltar ao menu principal")
+        match esperar_acao():
+            case 'esc':
+                limpar_tela()
+                break
+            case 'enter':
+                continue
+
+
+if __name__ == "__main__":
+    main_menu()
