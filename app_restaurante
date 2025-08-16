@@ -1,0 +1,422 @@
+import os
+import random
+import logging
+import re
+from datetime import date
+from typing import List, Optional, Dict, Any
+
+from colorama import Fore, Style, init
+
+# --- Configurações Iniciais ---
+init(autoreset=True)
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+# --- Constantes ---
+DIAS_SEMANA = [
+    "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"
+]
+CORES_TITULO = [
+    Fore.RED, Fore.GREEN, Fore.YELLOW, Fore.BLUE, Fore.MAGENTA, Fore.CYAN
+]
+
+
+# --- Classes de Modelo e Gerenciamento ---
+
+class Restaurante:
+    """Representa um único restaurante com seus dados e comportamentos."""
+
+    def __init__(
+        self,
+        nome: str,
+        telefone: str,
+        tipo_comida: str,
+        faz_entrega: bool,
+        aceita_pix: bool,
+        aceita_debito: bool,
+        aceita_credito: bool,
+        horario_funcionamento: List[str],
+        dias_semana: List[str],
+    ):
+        self.nome = nome.title()
+        self.telefone = telefone
+        self.tipo_comida = tipo_comida.capitalize()
+        self.faz_entrega = faz_entrega
+        self.aceita_pix = aceita_pix
+        self.aceita_debito = aceita_debito
+        self.aceita_credito = aceita_credito
+        self.horario_funcionamento = horario_funcionamento
+        self.dias_semana = dias_semana
+        self.ativo = True
+        self.data_cadastro = date.today()
+
+    def alternar_status(self) -> None:
+        """Inverte o status de ativo/inativo do restaurante."""
+        self.ativo = not self.ativo
+        logging.info(f"Status do restaurante '{self.nome}' alterado para {self.status_formatado}.")
+
+    @property
+    def status_formatado(self) -> str:
+        """Retorna o status como 'Ativo' ou 'Inativo'."""
+        return "Ativo" if self.ativo else "Inativo"
+
+    def __str__(self) -> str:
+        return (
+            f"Restaurante(Nome='{self.nome}', Telefone='{self.telefone}', "
+            f"Ativo={self.ativo})"
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Converte o objeto Restaurante em um dicionário para exibição."""
+        return {
+            "Nome": self.nome,
+            "Telefone": self.telefone,
+            "Tipo de Comida": self.tipo_comida,
+            "Entrega": "Sim" if self.faz_entrega else "Não",
+            "PIX": "Sim" if self.aceita_pix else "Não",
+            "Débito": "Sim" if self.aceita_debito else "Não",
+            "Crédito": "Sim" if self.aceita_credito else "Não",
+            "Horário": ", ".join(self.horario_funcionamento),
+            "Dias": ", ".join(d[:3] for d in self.dias_semana),
+            "Status": self.status_formatado,
+            "Cadastro": self.data_cadastro.strftime("%d/%m/%Y"),
+        }
+
+
+class GerenciadorRestaurantes:
+    """Gerencia a coleção de restaurantes (adicionar, listar, buscar, etc.)."""
+
+    def __init__(self):
+        self._restaurantes: List[Restaurante] = []
+
+    def adicionar_restaurante(self, restaurante: Restaurante) -> bool:
+        """Adiciona um novo restaurante, verificando se já não existe."""
+        if self.buscar_por_nome(restaurante.nome, exato=True):
+            logging.warning(f"Tentativa de cadastrar restaurante duplicado: {restaurante.nome}")
+            return False
+        self._restaurantes.append(restaurante)
+        logging.info(f"Restaurante cadastrado: {restaurante.nome}")
+        return True
+
+    def listar_restaurantes_ordenados(self) -> List[Restaurante]:
+        """Retorna todos os restaurantes ordenados alfabeticamente pelo nome."""
+        return sorted(self._restaurantes, key=lambda r: r.nome.lower())
+
+    def buscar_por_nome(self, nome: str, exato: bool = False) -> List[Restaurante]:
+        """Busca restaurantes por nome."""
+        if exato:
+            return [r for r in self._restaurantes if r.nome.lower() == nome.lower()]
+        return [r for r in self._restaurantes if nome.lower() in r.nome.lower()]
+
+    def remover_restaurante(self, restaurante: Restaurante) -> None:
+        """Remove um restaurante da lista."""
+        self._restaurantes.remove(restaurante)
+        logging.info(f"Restaurante removido: {restaurante.nome}")
+
+
+# --- Classes de Interface do Usuário (UI) ---
+
+class UI:
+    """Classe responsável por toda a interação com o usuário (menus, inputs)."""
+
+    @staticmethod
+    def limpar_tela():
+        """Limpa a tela do console."""
+        os.system("cls" if os.name == "nt" else "clear")
+
+    @staticmethod
+    def exibir_titulo():
+        """Imprime o título do aplicativo com uma cor aleatória."""
+        titulo = "Restaurante Expresso"
+        print(random.choice(CORES_TITULO) + f"\n{'='*40}\n{titulo:^40}\n{'='*40}\n" + Style.RESET_ALL)
+
+    @staticmethod
+    def pausar(mensagem: str = "Pressione ENTER para continuar..."):
+        """Pausa a execução até o usuário pressionar Enter."""
+        input(mensagem)
+
+    @staticmethod
+    def obter_input(prompt: str, permitir_vazio: bool = False) -> Optional[str]:
+        """Obtém entrada do usuário, permitindo abortar com 'ESC'."""
+        while True:
+            user_input = input(prompt).strip()
+            if user_input.upper() == "ESC":
+                logging.info("Operação abortada pelo usuário.")
+                return None
+            if not permitir_vazio and not user_input:
+                print(Fore.YELLOW + "Este campo não pode ser vazio. Tente novamente ou digite 'ESC' para cancelar.")
+            else:
+                return user_input
+
+    def obter_telefone(self, prompt: str = "Telefone (11 dígitos com DDD): ") -> Optional[str]:
+        """Obtém e valida um número de telefone que deve conter EXATAMENTE 11 dígitos."""
+        while True:
+            response = self.obter_input(prompt)
+            if response is None:
+                return None
+            
+            digitos = re.sub(r"\D", "", response)
+            
+            if len(digitos) == 11:
+                return f"({digitos[:2]}) {digitos[2:7]}-{digitos[7:]}"
+            
+            print(Fore.YELLOW + "Número inválido. O telefone deve conter exatamente 11 dígitos (com DDD).")
+
+    def obter_sim_nao(self, prompt: str) -> Optional[bool]:
+        """Obtém uma resposta 'Sim' ou 'Não'."""
+        while True:
+            response = self.obter_input(f"{prompt} (Sim/Não): ")
+            if response is None:
+                return None
+            
+            if response.lower() in ["sim", "s"]:
+                return True
+            if response.lower() in ["não", "nao", "n"]:
+                return False
+
+            print(Fore.YELLOW + "Resposta inválida. Por favor, digite 'Sim' ou 'Não'.")
+
+    def obter_multipla_escolha(self, prompt: str, opcoes: List[str]) -> Optional[List[str]]:
+        """Obtém uma ou mais opções de uma lista."""
+        prompt_completo = (
+            f"\n{prompt} ({'/'.join(opcoes)}):\n"
+            "Digite suas escolhas separadas por vírgula (ou 'Todos'): "
+        )
+        while True:
+            response = self.obter_input(prompt_completo)
+            if response is None:
+                return None
+            if response.lower() == "todos":
+                return opcoes
+
+            selecionadas = [opt.strip().capitalize() for opt in response.split(",")]
+            invalidas = [opt for opt in selecionadas if opt not in opcoes]
+
+            if not invalidas:
+                return selecionadas
+            
+            print(Fore.YELLOW + f"Opções inválidas: {', '.join(invalidas)}. Tente novamente.")
+
+    def obter_horarios(self) -> Optional[List[str]]:
+        """Obtém um ou mais horários de funcionamento."""
+        horarios = []
+        prompt_inicial = "\nDigite o horário de funcionamento (ex: 08:00 - 17:00): "
+        while True:
+            prompt_atual = prompt_inicial if not horarios else "Adicione outro horário (ou pressione ENTER para finalizar): "
+            response = self.obter_input(prompt_atual, permitir_vazio=True)
+
+            if response is None:
+                return None
+            if not response:
+                if not horarios:
+                    print(Fore.YELLOW + "Você deve adicionar pelo menos um horário.")
+                    continue
+                break
+
+            if re.match(r"^\d{2}:\d{2}\s*-\s*\d{2}:\d{2}$", response):
+                horarios.append(response)
+                print(Fore.GREEN + f"Horário '{response}' adicionado.")
+            else:
+                print(Fore.YELLOW + "Formato inválido. Use 'HH:MM - HH:MM'.")
+        
+        return horarios
+
+    @staticmethod
+    def exibir_tabela_restaurantes(restaurantes: List[Restaurante]):
+        """Exibe uma lista de restaurantes em formato de tabela."""
+        if not restaurantes:
+            print("Nenhum restaurante para exibir.")
+            return
+
+        dados_tabela = [r.to_dict() for r in restaurantes]
+        headers = list(dados_tabela[0].keys())
+        
+        larguras = {h: len(h) for h in headers}
+        for linha in dados_tabela:
+            for header, valor in linha.items():
+                larguras[header] = max(larguras[header], len(str(valor)))
+
+        linha_header = " | ".join(f"{h:<{larguras[h]}}" for h in headers)
+        print("\n" + Fore.CYAN + linha_header)
+        print("-" * len(linha_header))
+
+        for linha in dados_tabela:
+            linha_formatada = " | ".join(f"{str(v):<{larguras[k]}}" for k, v in linha.items())
+            print(linha_formatada)
+        
+        print("-" * len(linha_header))
+
+
+# --- Classe Principal da Aplicação ---
+
+class App:
+    """Orquestra a aplicação, unindo a UI e o Gerenciador."""
+
+    def __init__(self):
+        self.ui = UI()
+        self.gerenciador = GerenciadorRestaurantes()
+
+    def _get_restaurante_para_acao(self, acao: str) -> Optional[Restaurante]:
+        """Função auxiliar para buscar um restaurante específico para uma ação."""
+        termo_busca = self.ui.obter_input("Buscar por nome do restaurante: ")
+        if not termo_busca:
+            return None
+
+        encontrados = self.gerenciador.buscar_por_nome(termo_busca)
+
+        if not encontrados:
+            print(f"Nenhum restaurante encontrado com '{termo_busca}'.")
+            return None
+        
+        if len(encontrados) > 1:
+            print("Múltiplos resultados encontrados. Refine sua busca.")
+            self.ui.exibir_tabela_restaurantes(encontrados)
+            return None
+        
+        restaurante = encontrados[0]
+        self.ui.exibir_tabela_restaurantes([restaurante])
+        return restaurante
+
+    def cadastrar_restaurante(self):
+        """Fluxo de cadastro de um novo restaurante."""
+        self.ui.limpar_tela()
+        self.ui.exibir_titulo()
+        print("\n--- Cadastrar Novo Restaurante ---")
+        print("Digite 'ESC' a qualquer momento para abortar.\n")
+        
+        nome = self.ui.obter_input("Nome do Restaurante: ")
+        if nome is None: return
+
+        if self.gerenciador.buscar_por_nome(nome, exato=True):
+            print(Fore.YELLOW + f"O restaurante '{nome}' já está cadastrado.")
+            self.ui.pausar()
+            return
+        
+        dados = {"nome": nome}
+        prompts = {
+            "telefone": self.ui.obter_telefone,
+            "tipo_comida": lambda: self.ui.obter_input("Tipo de Comida: "),
+            "faz_entrega": lambda: self.ui.obter_sim_nao("Faz Entrega?"),
+            "aceita_pix": lambda: self.ui.obter_sim_nao("Aceita PIX?"),
+            "aceita_debito": lambda: self.ui.obter_sim_nao("Aceita Débito?"),
+            "aceita_credito": lambda: self.ui.obter_sim_nao("Aceita Crédito?"),
+            "horario_funcionamento": self.ui.obter_horarios,
+            "dias_semana": lambda: self.ui.obter_multipla_escolha("Dias da semana que funciona", DIAS_SEMANA),
+        }
+        
+        for chave, funcao_input in prompts.items():
+            valor = funcao_input()
+            if valor is None:
+                return
+            dados[chave] = valor
+        
+        novo_restaurante = Restaurante(**dados)
+        self.gerenciador.adicionar_restaurante(novo_restaurante)
+        print(Fore.GREEN + f"\nRestaurante '{novo_restaurante.nome}' cadastrado com sucesso!")
+        self.ui.pausar()
+
+    def listar_restaurantes(self):
+        """Fluxo para listar todos os restaurantes."""
+        self.ui.limpar_tela()
+        self.ui.exibir_titulo()
+        print("\n--- Lista de Restaurantes ---")
+        restaurantes = self.gerenciador.listar_restaurantes_ordenados()
+        self.ui.exibir_tabela_restaurantes(restaurantes)
+        self.ui.pausar()
+
+    def ativar_desativar_restaurante(self):
+        """Fluxo para alterar o status de um restaurante."""
+        self.ui.limpar_tela()
+        self.ui.exibir_titulo()
+        print("\n--- Ativar/Desativar Restaurante ---")
+        
+        restaurante = self._get_restaurante_para_acao("ativar/desativar")
+        if restaurante:
+            acao = "DESATIVAR" if restaurante.ativo else "ATIVAR"
+            confirmar = self.ui.obter_sim_nao(f"Deseja {acao} o restaurante '{restaurante.nome}'?")
+            if confirmar:
+                restaurante.alternar_status()
+                print(f"Status alterado. O restaurante está agora: {restaurante.status_formatado}.")
+        
+        self.ui.pausar()
+
+    def modificar_excluir_restaurante(self):
+        """Fluxo para modificar ou excluir um restaurante."""
+        self.ui.limpar_tela()
+        self.ui.exibir_titulo()
+        print("\n--- Modificar / Excluir Restaurante ---")
+
+        restaurante = self._get_restaurante_para_acao("modificar/excluir")
+        if not restaurante:
+            self.ui.pausar()
+            return
+
+        prompt = f"O que deseja fazer com '{restaurante.nome}'? (M)odificar / (E)xcluir: "
+        acao_raw = self.ui.obter_input(prompt)
+
+        if acao_raw is None:
+            self.ui.pausar("Operação cancelada.")
+            return
+
+        acao = acao_raw.upper()
+        
+        if acao == 'E':
+            if self.ui.obter_sim_nao(f"Tem certeza que deseja EXCLUIR '{restaurante.nome}'? Esta ação é irreversível."):
+                self.gerenciador.remover_restaurante(restaurante)
+                print(Fore.GREEN + "Restaurante excluído com sucesso.")
+        
+        elif acao == 'M':
+            print("\n--- Modificando Telefone ---")
+            prompt_mod = f"Novo telefone para '{restaurante.nome}' (atual: {restaurante.telefone}): "
+            novo_telefone = self.ui.obter_telefone(prompt_mod)
+            if novo_telefone is not None:
+                restaurante.telefone = novo_telefone
+                print(Fore.GREEN + "Telefone atualizado com sucesso!")
+            else:
+                print("Modificação de telefone cancelada.")
+        
+        else:
+            print(Fore.YELLOW + "Opção inválida.")
+        
+        self.ui.pausar()
+
+    def encerrar_app(self):
+        """Encerra a aplicação."""
+        print("Saindo do sistema...")
+        logging.info("Aplicação encerrada.")
+        print(Fore.YELLOW + "Atenção: Todos os dados em memória foram perdidos.")
+
+    def run(self):
+        """Inicia o loop principal do menu da aplicação."""
+        menu_opcoes = {
+            "1": ("Cadastrar Restaurante", self.cadastrar_restaurante),
+            "2": ("Listar Restaurantes", self.listar_restaurantes),
+            "3": ("Ativar/Desativar Restaurante", self.ativar_desativar_restaurante),
+            "4": ("Modificar / Excluir Restaurante", self.modificar_excluir_restaurante),
+            "5": ("Sair do APP", self.encerrar_app),
+        }
+
+        while True:
+            self.ui.limpar_tela()
+            self.ui.exibir_titulo()
+            print("Menu de Opções:")
+            for key, (text, _) in menu_opcoes.items():
+                print(f"{key} - {text}")
+            
+            escolha = input("\nDigite a opção desejada: ").strip()
+
+            if escolha in menu_opcoes:
+                if escolha == "5":
+                    menu_opcoes[escolha][1]()
+                    break
+                menu_opcoes[escolha][1]()
+            else:
+                print(Fore.RED + "Opção inválida. Tente novamente.")
+                logging.warning(f"Opção de menu inválida digitada: {escolha}")
+                self.ui.pausar()
+
+# --- Execução Principal ---
+if __name__ == "__main__":
+    app = App()
+    app.run()
