@@ -1,0 +1,201 @@
+import os
+
+class Restaurante:
+    '''
+    Classe para armazenar informações detalhadas sobre um restaurante.
+    '''
+    def __init__(self, nome, categoria, ativo=False):
+        '''
+        Inicializa um objeto Restaurante.
+        
+        Args:
+            nome (str): O nome do restaurante.
+            categoria (str): A categoria do restaurante (ex: Gourmet, Pizzaria).
+            ativo (bool): O status do restaurante, True para ativo e False para inativo.
+        '''
+        self.nome = nome
+        self.categoria = categoria
+        self.ativo = bool(ativo)
+
+    @property
+    def ativo_formatado(self):
+        '''Retorna uma string formatada representando o status de atividade.'''
+        return '✔ Ativo' if self.ativo else '❌ Inativo'
+
+    def __str__(self):
+        '''Retorna uma representação em string formatada para exibição em tabela.'''
+        return f'{self.nome.ljust(25)} | {self.categoria.ljust(25)} | {self.ativo_formatado}'
+
+
+def exibir_menu():
+    '''Mostra o menu principal de opções.'''
+    print('\n--- Menu Principal ---')
+    print('1. Cadastrar Restaurante')
+    print('2. Listar Restaurantes')
+    print('3. Gerenciar Restaurante (Alterar/Excluir)')
+    print('4. Sair do Programa')
+
+def cadastrar_restaurante(restaurantes):
+    '''
+    Solicita os dados de um novo restaurante e o adiciona ao dicionário.
+    '''
+    print('\n--- Cadastro de Novo Restaurante ---')
+    print('Digite \'esc\' a qualquer momento para cancelar o cadastro.\n')
+
+    nome = input('Digite o nome do restaurante: ').strip()
+    if nome.lower() == 'esc':
+        print('Cadastro cancelado.')
+        return
+
+    if nome in restaurantes:
+        print(f'Erro: O restaurante \'{nome}\' já está cadastrado.')
+        return
+
+    categoria = input(f'Digite a categoria de \'{nome}\': ').strip()
+    if categoria.lower() == 'esc':
+        print('Cadastro cancelado.')
+        return
+        
+    status_str = input(f'O restaurante \'{nome}\' está ativo? (s/n): ').strip().lower()
+    if status_str == 'esc':
+        print('Cadastro cancelado.')
+        return
+    
+    ativo = status_str == 's'
+    
+    novo_restaurante = Restaurante(nome, categoria, ativo)
+    restaurantes[nome] = novo_restaurante
+    print(f'\n✔ O restaurante \'{nome}\' foi cadastrado com sucesso!')
+
+def listar_restaurantes(restaurantes):
+    '''Exibe todos os restaurantes cadastrados em formato de tabela.'''
+    print('\n--- Lista de Restaurantes Cadastrados ---')
+    
+    print(f'{'Nome do Restaurante'.ljust(25)} | {'Categoria'.ljust(25)} | {'Status'}')
+    print('-' * 60)
+
+    if not restaurantes:
+        print('Nenhum restaurante cadastrado ainda.')
+    else:
+        for restaurante in restaurantes.values():
+            print(restaurante)
+    
+    input('\nPressione ENTER para voltar ao menu principal.')
+
+def _alterar_restaurante(restaurantes, nome_antigo):
+    '''Lógica interna para alterar os dados de um restaurante.'''
+    restaurante = restaurantes[nome_antigo]
+    
+    print('\nAltere os campos desejados. Pressione ENTER para manter o valor atual.')
+    print('Digite \'esc\' para abortar a alteração.\n')
+
+    novo_nome = input(f'Novo nome para \'{restaurante.nome}\': ').strip()
+    if novo_nome.lower() == 'esc':
+        print('Alteração cancelada.')
+        return
+    if novo_nome and novo_nome != restaurante.nome:
+        if novo_nome in restaurantes:
+            print(f'Erro: Já existe um restaurante com o nome \'{novo_nome}\'. Alteração cancelada.')
+            return
+        restaurante.nome = novo_nome
+
+    nova_categoria = input(f'Nova categoria para \'{restaurante.categoria}\': ').strip()
+    if nova_categoria.lower() == 'esc':
+        print('Alteração cancelada.')
+        return
+    if nova_categoria:
+        restaurante.categoria = nova_categoria
+
+    novo_status_str = input(f'Novo status (ativo: \'s\' / inativo: \'n\'): ').strip().lower()
+    if novo_status_str == 'esc':
+        print('Alteração cancelada.')
+        return
+    if novo_status_str == 's':
+        restaurante.ativo = True
+    elif novo_status_str == 'n':
+        restaurante.ativo = False
+    
+    if novo_nome and novo_nome != nome_antigo:
+        restaurantes[novo_nome] = restaurantes.pop(nome_antigo)
+        
+    print(f'\n✔ Cadastro do restaurante \'{restaurante.nome}\' atualizado com sucesso!')
+
+def _excluir_restaurante(restaurantes, nome_para_excluir):
+    '''Lógica interna para excluir um restaurante, com confirmação.'''
+    confirmacao = input(f'Tem certeza que deseja excluir o restaurante \'{nome_para_excluir}\'? Esta ação não pode ser desfeita. (s/n): ').strip().lower()
+    if confirmacao == 's':
+        del restaurantes[nome_para_excluir]
+        print(f'O restaurante \'{nome_para_excluir}\' foi excluído com sucesso.')
+    else:
+        print('Exclusão cancelada.')
+
+def gerenciar_restaurante(restaurantes):
+    '''Permite ao usuário escolher entre alterar ou excluir um restaurante.'''
+    print('\n--- Gerenciar Restaurante ---')
+    nome_para_gerenciar = input('Digite o nome do restaurante que deseja gerenciar: ').strip()
+
+    if nome_para_gerenciar not in restaurantes:
+        print(f'Erro: Restaurante \'{nome_para_gerenciar}\' não encontrado.')
+        return
+
+    restaurante = restaurantes[nome_para_gerenciar]
+    print(f'\nRestaurante encontrado: \n{restaurante}\n')
+    
+    while True:
+        print('O que você deseja fazer?')
+        print('1. Alterar dados')
+        print('2. Excluir restaurante')
+        print('3. Voltar ao menu principal')
+        
+        try:
+            sub_opcao = int(input('Escolha uma opção: '))
+            match sub_opcao:
+                case 1:
+                    _alterar_restaurante(restaurantes, nome_para_gerenciar)
+                    return # Retorna para o menu principal
+                case 2:
+                    _excluir_restaurante(restaurantes, nome_para_gerenciar)
+                    return # Retorna para o menu principal
+                case 3:
+                    return # Retorna para o menu principal
+                case _:
+                    print('Opção inválida. Tente novamente.')
+        except ValueError:
+            print('Entrada inválida. Por favor, digite um número.')
+
+def main():
+    '''Função principal que gerencia o menu e a interação com o usuário.'''
+    restaurantes_cadastrados = {
+        'Praça': Restaurante(nome='Praça', categoria='Gourmet', ativo=False),
+        'Pizza Suprema': Restaurante(nome='Pizza Suprema', categoria='Pizzaria', ativo=True)
+    }
+
+    sair = False
+    while not sair:
+        os.system('cls' if os.name == 'nt' else 'clear')
+        exibir_menu()
+        
+        try:
+            opcao = int(input('Escolha uma opção: '))
+            
+            match opcao:
+                case 1:
+                    cadastrar_restaurante(restaurantes_cadastrados)
+                case 2:
+                    listar_restaurantes(restaurantes_cadastrados)
+                case 3:
+                    gerenciar_restaurante(restaurantes_cadastrados)
+                case 4:
+                    print('Saindo do programa. Até logo!')
+                    sair = True
+                case _:
+                    print('Opção inválida. Tente novamente.')
+        
+        except ValueError:
+            print('Entrada inválida. Por favor, digite um número.')
+        
+        if not sair:
+             input('\nPressione ENTER para continuar...')
+
+if __name__ == '__main__':
+    main()
