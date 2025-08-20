@@ -1,0 +1,219 @@
+# Módulos do Python
+import re
+from datetime import datetime
+from enum import Enum, auto
+from typing import List, Dict
+
+# Importação da nova biblioteca para tabelas
+from tabulate import tabulate
+
+# --- Definição das Exceções Customizadas ---
+class ValorInvalidoError(ValueError):
+    """Exceção para valores inválidos (nulos, negativos, formato incorreto)."""
+    pass
+
+class OperacaoInvalidaError(Exception):
+    """Exceção para operações em contas com estado inadequado."""
+    pass
+
+class SaldoInsuficienteError(Exception):
+    """Exceção para quando o saldo é insuficiente para uma operação."""
+    pass
+
+
+# --- Definição dos Estados Possíveis para a Conta ---
+class EstadoConta(Enum):
+    """Define os possíveis estados de uma Conta Bancária."""
+    INATIVO = auto()
+    ATIVO = auto()
+    BLOQUEADO = auto()
+    ENCERRADO = auto()
+
+
+# --- Classe ClienteBanco ---
+class ClienteBanco:
+    """Representa um cliente do banco, que pode possuir múltiplas contas."""
+    _total_clientes = 0
+
+    def __init__(self, nome: str, cpf: str, data_nascimento: str):
+        if not nome or not nome.strip():
+            raise ValorInvalidoError("O nome não pode ser vazio.")
+        if not re.match(r'^\d{3}\.\d{3}\.\d{3}-\d{2}$', cpf):
+            raise ValorInvalidoError("Formato de CPF inválido. Use XXX.XXX.XXX-XX.")
+        try:
+            datetime.strptime(data_nascimento, '%d/%m/%Y')
+        except ValueError:
+            raise ValorInvalidoError("Formato de data inválido. Use DD/MM/AAAA.")
+
+        self.nome = nome.strip().capitalize()
+        self.cpf = cpf
+        self.data_nascimento = data_nascimento
+        self.contas: List['ContaBancaria'] = []
+        ClienteBanco._total_clientes += 1
+
+    def abrir_conta(self, saldo_inicial: float = 0.0) -> 'ContaBancaria':
+        nova_conta = ContaBancaria(cliente=self, saldo_inicial=saldo_inicial)
+        self.contas.append(nova_conta)
+        print(f"✅ Conta aberta para {self.nome} com saldo inicial de R$ {saldo_inicial:.2f}.")
+        return nova_conta
+
+    @classmethod
+    def exibir_total_clientes(cls):
+        print(f"\n📊 O banco possui um total de {cls._total_clientes} clientes cadastrados.")
+    
+    def __str__(self) -> str:
+        return f"Cliente: {self.nome} (CPF: {self.cpf})"
+
+
+# --- Classe ContaBancaria ---
+class ContaBancaria:
+    """Representa uma conta bancária, ligada a um cliente e com histórico de transações."""
+    _proximo_numero_conta = 1001
+
+    def __init__(self, cliente: ClienteBanco, saldo_inicial: float):
+        if float(saldo_inicial) < 0:
+            raise ValorInvalidoError("O saldo inicial não pode ser negativo.")
+
+        self.numero_conta = ContaBancaria._proximo_numero_conta
+        self.cliente = cliente
+        self._saldo = float(saldo_inicial)
+        self._estado = EstadoConta.INATIVO
+        self._transacoes: List[Dict] = []
+        
+        ContaBancaria._proximo_numero_conta += 1
+        self._registrar_transacao("Abertura de Conta", saldo_inicial)
+
+    # --- Propriedades ---
+    @property
+    def titular(self) -> str: return self.cliente.nome
+    @property
+    def saldo(self) -> float: return self._saldo
+    @property
+    def estado(self) -> EstadoConta: return self._estado
+
+    def _registrar_transacao(self, tipo: str, valor: float):
+        transacao = {"tipo": tipo, "valor": valor, "data": datetime.now(), "saldo_apos": self._saldo}
+        self._transacoes.append(transacao)
+
+    # --- Métodos de Operação ---
+    def depositar(self, valor: float):
+        if self.estado != EstadoConta.ATIVO:
+            raise OperacaoInvalidaError(f"Operação negada. Conta não está ATIVA (Estado: {self.estado.name}).")
+        if valor <= 0:
+            raise ValorInvalidoError("O valor do depósito deve ser positivo.")
+        
+        self._saldo += valor
+        self._registrar_transacao("Depósito", valor)
+        print(f"✅ Depósito de R$ {valor:.2f} realizado na conta de {self.titular}.")
+
+    def sacar(self, valor: float):
+        if self.estado != EstadoConta.ATIVO:
+            raise OperacaoInvalidaError(f"Operação negada. Conta não está ATIVA (Estado: {self.estado.name}).")
+        if valor <= 0:
+            raise ValorInvalidoError("O valor do saque deve ser positivo.")
+        if valor > self._saldo:
+            raise SaldoInsuficienteError("Saldo insuficiente.")
+            
+        self._saldo -= valor
+        self._registrar_transacao("Saque", -valor)
+        print(f"✅ Saque de R$ {valor:.2f} realizado na conta de {self.titular}.")
+
+    def transferir(self, valor: float, conta_destino: 'ContaBancaria'):
+        if self.estado != EstadoConta.ATIVO or conta_destino.estado != EstadoConta.ATIVO:
+            raise OperacaoInvalidaError("Ambas as contas devem estar ATIVAS para a transferência.")
+        if valor <= 0:
+            raise ValorInvalidoError("O valor da transferência deve ser positivo.")
+        if valor > self._saldo:
+            raise SaldoInsuficienteError("Saldo insuficiente para transferência.")
+        
+        self._saldo -= valor
+        conta_destino._saldo += valor
+        self._registrar_transacao(f"Transferência Enviada para {conta_destino.titular}", -valor)
+        conta_destino._registrar_transacao(f"Transferência Recebida de {self.titular}", valor)
+        print(f"✅ Transferência de R$ {valor:.2f} de {self.titular} para {conta_destino.titular} realizada.")
+
+    # --- Métodos de Gerenciamento ---
+    def ativar(self):
+        if self._estado == EstadoConta.INATIVO:
+            self._estado = EstadoConta.ATIVO
+            print(f"ℹ️ Conta de {self.titular} foi ATIVADA.")
+        else: print(f"⚠️ A conta já está no estado: {self._estado.name}")
+
+    def bloquear(self):
+        if self._estado == EstadoConta.ATIVO:
+            self._estado = EstadoConta.BLOQUEADO
+            print(f"🔒 Conta de {self.titular} foi BLOQUEADA.")
+        else: print(f"⚠️ Não é possível bloquear uma conta que não esteja ATIVA.")
+            
+    def encerrar(self):
+        if self._saldo == 0:
+            self._estado = EstadoConta.ENCERRADO
+            self._registrar_transacao("Encerramento de Conta", 0)
+            print(f"❌ Conta de {self.titular} foi permanentemente ENCERRADA.")
+        else: raise OperacaoInvalidaError("A conta precisa ter saldo zero para ser encerrada.")
+
+    # ############################################################### #
+    # MÉTODO ATUALIZADO COM A BIBLIOTECA TABULATE                     #
+    # ############################################################### #
+    def ver_extrato(self):
+        print("\n" + "="*78)
+        print(f"EXTRATO DA CONTA Nº {self.numero_conta}".center(78))
+        print(f"CLIENTE: {self.titular}".center(78))
+        print("="*78)
+
+        if not self._transacoes:
+            print("Nenhuma transação registrada.".center(78))
+        else:
+            cabecalho = ["Data e Hora", "Tipo de Operação", "Valor (R$)", "Saldo Após (R$)"]
+            dados_tabela = []
+            for t in self._transacoes:
+                dados_tabela.append([
+                    t['data'].strftime('%d/%m/%Y %H:%M:%S'),
+                    t['tipo'],
+                    f"{t['valor']:.2f}",
+                    f"{t['saldo_apos']:.2f}"
+                ])
+            # Imprime a tabela formatada com o estilo 'fancy_grid'
+            print(tabulate(dados_tabela, headers=cabecalho, tablefmt="fancy_grid"))
+        
+        print(f"\nSALDO ATUAL: R$ {self.saldo:.2f}")
+        print("="*78)
+
+
+    def __str__(self) -> str:
+        return f"Conta Nº {self.numero_conta} | Titular: {self.titular} | Saldo: R$ {self.saldo:.2f} | Estado: {self.estado.name}"
+
+
+# --- Demonstração de Uso do Sistema Integrado ---
+if __name__ == "__main__":
+    try:
+        print("--- 1. Cadastrando Clientes ---")
+        cliente_bruna = ClienteBanco(nome="Bruna Marques", cpf="111.222.333-44", data_nascimento="15/08/1990")
+        cliente_ricardo = ClienteBanco(nome="Ricardo Alves", cpf="555.666.777-88", data_nascimento="20/03/1985")
+        
+        print("\n--- 2. Abrindo Contas ---")
+        conta_bruna = cliente_bruna.abrir_conta(saldo_inicial=1500.00)
+        conta_ricardo = cliente_ricardo.abrir_conta(saldo_inicial=3000.00)
+        
+        print("\n--- 3. Ativando Contas ---")
+        conta_bruna.ativar()
+        conta_ricardo.ativar()
+
+        print("\n--- 4. Realizando Operações ---")
+        conta_bruna.depositar(500.00)
+        conta_ricardo.sacar(250.00)
+        conta_bruna.transferir(800.00, conta_ricardo)
+        
+        print("\n--- 5. Testando Regras de Negócio ---")
+        conta_ricardo.bloquear()
+        try:
+            conta_ricardo.sacar(100)
+        except OperacaoInvalidaError as e:
+            print(f"ERRO CAPTURADO (como esperado): {e}")
+
+        # 6. Exibindo extratos finais com a nova formatação
+        conta_bruna.ver_extrato()
+        conta_ricardo.ver_extrato()
+
+    except (ValorInvalidoError, OperacaoInvalidaError, SaldoInsuficienteError) as e:
+        print(f"\n\n🚨 ERRO CRÍTICO NO SISTEMA: {e}")
