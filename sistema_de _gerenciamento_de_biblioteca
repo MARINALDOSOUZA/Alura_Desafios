@@ -1,0 +1,233 @@
+import os
+import json
+import logging
+import requests
+import pandas as pd
+from datetime import datetime, timedelta
+from typing import List, Optional, Dict, Any
+
+# ==============================================================================
+# PARTE 1: DEFINIÇÃO DA CLASSE
+# ==============================================================================
+
+class Livro:
+    """
+    Representa um livro e gerencia um acervo de todas as instâncias criadas.
+    Inclui funcionalidades para gerenciar empréstimos e serialização de dados.
+    """
+    _acervo = []
+
+    def __init__(self, titulo: str, autor: str, ano_publicacao: int, **kwargs):
+        self.titulo = titulo; self.autor = autor; self.ano_publicacao = ano_publicacao
+        self.disponivel = kwargs.get('disponivel', True)
+        self.nome_emprestado_para: Optional[str] = kwargs.get('nome_emprestado_para')
+        self.cpf_emprestado_para: Optional[str] = kwargs.get('cpf_emprestado_para')
+        self.telefone_emprestado_para: Optional[str] = kwargs.get('telefone_emprestado_para')
+        
+        data_emprestimo_str = kwargs.get('data_emprestimo')
+        self.data_emprestimo: Optional[datetime] = datetime.fromisoformat(data_emprestimo_str) if data_emprestimo_str else None
+        data_previsao_entrega_str = kwargs.get('data_previsao_entrega')
+        self.data_previsao_entrega: Optional[datetime] = datetime.fromisoformat(data_previsao_entrega_str) if data_previsao_entrega_str else None
+
+        if not any(livro.titulo == self.titulo and livro.autor == self.autor for livro in Livro._acervo):
+             Livro._acervo.append(self)
+
+    @property
+    def titulo(self) -> str: return self._titulo
+    @titulo.setter
+    def titulo(self, v: str): self._titulo = v.strip().title()
+    @property
+    def autor(self) -> str: return self._autor
+    @autor.setter
+    def autor(self, v: str): self._autor = v.strip().title()
+    @property
+    def ano_publicacao(self) -> int: return self._ano_publicacao
+    @ano_publicacao.setter
+    def ano_publicacao(self, v: int): self._ano_publicacao = v
+    
+    def __str__(self) -> str: return f"'{self.titulo}' por {self.autor} ({self.ano_publicacao})"
+
+    def emprestar(self, nome: str, cpf: str, telefone: str, dias_emprestimo: int):
+        if not self.disponivel: return
+        self.disponivel = False; self.nome_emprestado_para = nome; self.cpf_emprestado_para = cpf
+        self.telefone_emprestado_para = telefone; self.data_emprestimo = datetime.now()
+        self.data_previsao_entrega = self.data_emprestimo + timedelta(days=dias_emprestimo)
+
+    def devolver(self):
+        self.disponivel = True; self.nome_emprestado_para = None; self.cpf_emprestado_para = None
+        self.telefone_emprestado_para = None; self.data_emprestimo = None; self.data_previsao_entrega = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'titulo': self.titulo, 'autor': self.autor, 'ano_publicacao': self.ano_publicacao,
+            'disponivel': self.disponivel, 'nome_emprestado_para': self.nome_emprestado_para,
+            'cpf_emprestado_para': self.cpf_emprestado_para,
+            'telefone_emprestado_para': self.telefone_emprestado_para,
+            'data_emprestimo': self.data_emprestimo.isoformat() if self.data_emprestimo else None,
+            'data_previsao_entrega': self.data_previsao_entrega.isoformat() if self.data_previsao_entrega else None,
+        }
+
+    @staticmethod
+    def verificar_disponibilidade(ano: int) -> List['Livro']:
+        return [livro for livro in Livro._acervo if livro.ano_publicacao == ano and livro.disponivel]
+
+
+# ==============================================================================
+# PARTE 2: APLICAÇÃO PRINCIPAL COM LOGGING E MATCH-CASE
+# ==============================================================================
+
+# --- CONSTANTES DE CONFIGURAÇÃO ---
+PASTA_ARQUIVOS = "arquivos"
+ARQUIVO_ESTADO = os.path.join(PASTA_ARQUIVOS, "biblioteca_estado.json")
+URL_DATASET = "https://raw.githubusercontent.com/zygmuntz/goodbooks-10k/master/books.csv"
+QTD_LIVROS_DOWNLOAD = 20
+DIAS_EMPRESTIMO = 15
+
+# --- CONFIGURAÇÃO DO LOGGING ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filename='biblioteca.log',
+    filemode='a',
+    encoding='utf-8'
+)
+
+# --- FUNÇÕES DE UX E PERSISTÊNCIA ---
+def limpar_tela(): os.system('cls' if os.name == 'nt' else 'clear')
+
+def salvar_estado():
+    try:
+        with open(ARQUIVO_ESTADO, 'w', encoding='utf-8') as f:
+            json.dump([livro.to_dict() for livro in Livro._acervo], f, indent=4, ensure_ascii=False)
+    except IOError as e:
+        logging.error(f"Falha ao salvar o estado da biblioteca: {e}")
+
+def carregar_estado():
+    try:
+        Livro._acervo.clear()
+        with open(ARQUIVO_ESTADO, 'r', encoding='utf-8') as f:
+            dados_acervo = json.load(f)
+            for dados_livro in dados_acervo: Livro(**dados_livro)
+        logging.info(f"Estado da biblioteca carregado. {len(Livro._acervo)} livros no acervo.")
+        return True
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logging.error(f"Falha ao carregar estado: {e}. Será necessário inicializar do zero.")
+        return False
+
+def inicializar_do_csv():
+    logging.warning("Nenhum estado válido encontrado. Inicializando a partir do CSV.")
+    if not os.path.exists(PASTA_ARQUIVOS): os.makedirs(PASTA_ARQUIVOS)
+    try:
+        print(f"Baixando os {QTD_LIVROS_DOWNLOAD} livros mais populares...")
+        response = requests.get(URL_DATASET); response.raise_for_status()
+        from io import StringIO
+        df = pd.read_csv(StringIO(response.text))
+        Livro._acervo.clear()
+        for _, row in df.head(QTD_LIVROS_DOWNLOAD).iterrows():
+            try: ano = int(row['original_publication_year'])
+            except (ValueError, TypeError): ano = 0
+            Livro(titulo=row['title'], autor=row['authors'], ano_publicacao=ano)
+        salvar_estado()
+        logging.info("Biblioteca inicializada do CSV e estado inicial salvo.")
+        print("Biblioteca inicializada com sucesso!")
+    except requests.RequestException as e:
+        logging.critical(f"Falha CRÍTICA ao baixar o dataset inicial: {e}")
+        print(f"Erro de rede. Não foi possível inicializar a biblioteca.")
+        return False
+    return True
+
+# --- FUNÇÕES DE MENU E EXIBIÇÃO ---
+def imprimir_tabela(livros, mostrar_emprestimo=False):
+    if not livros: print("Nenhum livro para exibir."); return
+    headers = ["ID", "Título", "Autor", "Status"]
+    max_widths = {"ID": 4, "Título": 50, "Autor": 30, "Status": 12}
+    if mostrar_emprestimo: headers.append("Previsão Entrega"); max_widths["Previsão Entrega"] = 18
+    def truncar(t, l): return t if len(str(t)) <= l else str(t)[:l-3]+"..."
+    header_line = " | ".join(f"{h:<{max_widths[h]}}" for h in headers)
+    print("\n" + header_line); print("-" * len(header_line))
+    for i, livro in enumerate(livros):
+        status = "Disponível" if livro.disponivel else "Emprestado"
+        linha = [f"{i+1:<{max_widths['ID']}}", f"{truncar(livro.titulo, max_widths['Título']):<{max_widths['Título']}}", f"{truncar(livro.autor, max_widths['Autor']):<{max_widths['Autor']}}", f"{status:<{max_widths['Status']}}"]
+        if mostrar_emprestimo:
+            previsao = livro.data_previsao_entrega.strftime('%d/%m/%Y') if livro.data_previsao_entrega else "-"
+            linha.append(f"{previsao:<{max_widths['Previsão Entrega']}}")
+        print(" | ".join(linha))
+
+def menu_emprestar():
+    limpar_tela(); print("--- Emprestar Livro ---")
+    termo = input("Digite o título, autor ou ano para buscar: ").lower().strip()
+    if not termo: print("Termo de busca não pode ser vazio."); input("\nPressione ENTER..."); return
+    livros_disponiveis = [l for l in Livro._acervo if l.disponivel and (termo in l.titulo.lower() or termo in l.autor.lower() or termo == str(l.ano_publicacao))]
+    if not livros_disponiveis: print("\nNenhum livro disponível encontrado para esta busca.")
+    else:
+        imprimir_tabela(livros_disponiveis)
+        try:
+            escolha = int(input("\nDigite o ID do livro: ")) - 1
+            if 0 <= escolha < len(livros_disponiveis):
+                livro = livros_disponiveis[escolha]
+                nome = input("Nome completo do leitor: "); cpf = input("CPF (11 dígitos): "); tel = input("Telefone (11 dígitos): ")
+                livro.emprestar(nome, cpf, tel, DIAS_EMPRESTIMO); salvar_estado()
+                logging.info(f"Livro '{livro.titulo}' emprestado para o CPF {cpf}.")
+                print(f"\nEmpréstimo confirmado! Previsão de entrega: {livro.data_previsao_entrega.strftime('%d/%m/%Y')}")
+            else: print("ID inválido.")
+        except ValueError: print("Entrada inválida.")
+    input("\nPressione ENTER...")
+
+def menu_devolver():
+    limpar_tela(); print("--- Devolver Livro ---")
+    cpf = input("Digite o CPF do leitor: ").strip()
+    livros_do_usuario = [l for l in Livro._acervo if l.cpf_emprestado_para == cpf]
+    if not livros_do_usuario: print("Nenhum livro encontrado para este CPF.")
+    else:
+        imprimir_tabela(livros_do_usuario, mostrar_emprestimo=True)
+        try:
+            ids_str = input("\nDigite o(s) ID(s) do(s) livro(s) a devolver (separados por vírgula): ")
+            ids_para_devolver = [int(i.strip()) - 1 for i in ids_str.split(',')]
+            devolvidos_count = 0
+            for i in sorted(ids_para_devolver, reverse=True):
+                if 0 <= i < len(livros_do_usuario):
+                    livro_devolvido = livros_do_usuario[i]
+                    livro_devolvido.devolver(); devolvidos_count += 1
+                    logging.info(f"Livro '{livro_devolvido.titulo}' devolvido pelo CPF {cpf}.")
+            if devolvidos_count > 0: salvar_estado(); print(f"\n{devolvidos_count} livro(s) devolvido(s) com sucesso!")
+            else: print("Nenhum ID válido selecionado.")
+        except ValueError: print("Entrada inválida.")
+    input("\nPressione ENTER...")
+
+def main():
+    """Função principal que gerencia o estado e o loop do menu."""
+    logging.info("Aplicação iniciada.")
+    if not (os.path.exists(ARQUIVO_ESTADO) and carregar_estado()):
+        if not inicializar_do_csv(): return
+    
+    while True:
+        limpar_tela()
+        print(f"--- Sistema de Biblioteca ({datetime.now().strftime('%d/%m/%Y %H:%M')}) ---")
+        print("1. Listar Todos os Livros"); print("2. Listar Livros Disponíveis")
+        print("3. Listar Livros Emprestados"); print("4. Emprestar Livro")
+        print("5. Devolver Livro"); print("6. Sair")
+        opcao = input("Escolha uma opção: ").strip()
+
+        # <<< AQUI ESTÁ A IMPLEMENTAÇÃO DO MATCH-CASE >>>
+        match opcao:
+            case '1':
+                limpar_tela(); imprimir_tabela(Livro._acervo); input("\nPressione ENTER...")
+            case '2':
+                limpar_tela(); imprimir_tabela([l for l in Livro._acervo if l.disponivel]); input("\nPressione ENTER...")
+            case '3':
+                limpar_tela(); imprimir_tabela([l for l in Livro._acervo if not l.disponivel], True); input("\nPressione ENTER...")
+            case '4':
+                menu_emprestar()
+            case '5':
+                menu_devolver()
+            case '6':
+                logging.info("Aplicação encerrada pelo usuário.")
+                print("Obrigado por usar o sistema!"); break
+            case _: # O case "_" funciona como o "else" final
+                print("Opção inválida."); input("\nPressione ENTER...")
+
+# ==============================================================================
+# PONTO DE ENTRADA DO SCRIPT
+# ==============================================================================
+if __name__ == "__main__":
+    main()
