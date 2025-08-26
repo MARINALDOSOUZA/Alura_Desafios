@@ -1,0 +1,238 @@
+## URL para ser informada: https://github.com/alura-cursos/dash
+
+import os
+import subprocess
+import sys
+import logging
+import webbrowser
+import time
+import shutil
+import errno
+import stat
+from pathlib import Path
+from typing import Tuple, Optional, List
+
+# --- CONFIGURAÇÃO DO LOGGING ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    stream=sys.stdout,
+)
+
+# --- CONSTANTES ---
+PASTA_VENV = Path('env')
+PASTA_PROJETO_CLONADO = Path('projeto_exemplo_clonado')
+PACOTES_MODERNOS = [
+    'pandas', 'dash', 'dash-bootstrap-components', 'scikit-learn', 'xgboost', 'plotly'
+]
+NOMES_SCRIPT_APP = ['app.py', 'main.py']
+URL_APP = 'http://127.0.0.1:8050'
+
+# --- FUNÇÕES AUXILIARES DE BAIXO NÍVEL ---
+
+def _executar_comando(comando: List[str], pasta_trabalho: Optional[Path] = None) -> bool:
+    try:
+        logging.info(f"Executando comando: {' '.join(comando)}")
+        processo = subprocess.Popen(
+            comando,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding='utf-8',
+            cwd=pasta_trabalho
+        )
+        stdout, stderr = processo.communicate()
+        if processo.returncode != 0:
+            logging.error(f"Falha ao executar comando: {' '.join(comando)}\n{stderr}")
+            return False
+        return True
+    except FileNotFoundError:
+        # CORREÇÃO APLICADA AQUI: Aspas duplas por fora para permitir aspas simples dentro.
+        logging.error(f"Comando '{comando[0]}' não encontrado.")
+        return False
+    except Exception as e:
+        logging.error(f'Erro inesperado ao executar o comando: {e}')
+        return False
+
+def confirmar_acao(mensagem: str) -> bool:
+    while True:
+        try:
+            resposta = input(f'{mensagem} (s/n): ').lower().strip()
+            if resposta in ['s', 'sim', 'y', 'yes']: return True
+            if resposta in ['n', 'nao', 'não', 'no']:
+                logging.warning('Ação cancelada pelo usuário.')
+                return False
+            print('Resposta inválida. Por favor, digite "s" para sim ou "n" para não.')
+        except KeyboardInterrupt:
+            logging.warning('\nOperação interrompida pelo usuário.')
+            sys.exit(1)
+
+def obter_caminhos_plataforma() -> Tuple[Path, Path]:
+    if sys.platform == 'win32':
+        executavel_python = PASTA_VENV / 'Scripts' / 'python.exe'
+        executavel_pip = PASTA_VENV / 'Scripts' / 'pip.exe'
+    else:
+        executavel_python = PASTA_VENV / 'bin' / 'python'
+        executavel_pip = PASTA_VENV / 'bin' / 'pip'
+    return executavel_python, executavel_pip
+
+def tratar_remocao_somente_leitura(funcao, caminho, info_excecao):
+    valor_excecao = info_excecao[1]
+    if funcao in (os.rmdir, os.remove, os.unlink) and valor_excecao.errno == errno.EACCES:
+        os.chmod(caminho, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+        funcao(caminho)
+    else:
+        raise
+
+def corrigir_arquivo_app(caminho_arquivo: Path):
+    logging.info(f"Verificando e corrigindo o arquivo '{caminho_arquivo}' para compatibilidade...")
+    correcoes_feitas = 0
+    try:
+        conteudo = caminho_arquivo.read_text(encoding='utf-8')
+        
+        import_antigo_1 = 'import dash_core_components as dcc'
+        import_antigo_2 = 'import dash_html_components as html'
+        import_novo = 'from dash import dcc, html'
+        if import_antigo_1 in conteudo:
+            conteudo = conteudo.replace(import_antigo_1, import_novo).replace(import_antigo_2, '')
+            correcoes_feitas += 1
+            logging.info('Patch aplicado: Importações do Dash modernizadas.')
+            
+        pandas_replace_antigo = ".str.replace('.', '')"
+        pandas_replace_novo = ".str.replace('.', '', regex=False)"
+        if pandas_replace_antigo in conteudo:
+            conteudo = conteudo.replace(pandas_replace_antigo, pandas_replace_novo)
+            correcoes_feitas += 1
+            logging.info('Patch aplicado: Comportamento do Pandas str.replace corrigido.')
+            
+        if 'app.layout' not in conteudo:
+            html_importado = ('from dash import html' in conteudo or 'import dash_html_components as html' in conteudo)
+            if not html_importado:
+                if 'from dash import Dash' in conteudo: conteudo = conteudo.replace('from dash import Dash', 'from dash import Dash, html')
+                else: conteudo = 'from dash import html\n' + conteudo
+                logging.info('Patch aplicado: Adicionada importação "from dash import html" que estava faltando.')
+                correcoes_feitas += 1
+            conteudo += "\n\n# --- Layout básico adicionado automaticamente ---\n"
+            conteudo += "app.layout = html.Div([html.H1('Aplicação Dash Inicializada'), html.P('Layout básico gerado automaticamente para evitar erro NoLayoutException.')])\n"
+            correcoes_feitas += 1
+            logging.info('Patch aplicado: Inclusão de layout básico.')
+            
+        if 'app.run_server' not in conteudo and 'if __name__ == "__main__":' not in conteudo:
+            conteudo += f"\n\nif __name__ == '__main__':\n    app.run_server(host='127.0.0.1', port={URL_APP.split(':')[-1]}, debug=True)\n"
+            correcoes_feitas += 1
+            logging.info('Patch aplicado: Inclusão de app.run_server para manter servidor ativo.')
+            
+        if correcoes_feitas > 0:
+            caminho_arquivo.write_text(conteudo, encoding='utf-8')
+            logging.info(f'Total de {correcoes_feitas} correções aplicadas com sucesso!')
+        else:
+            logging.info('Nenhuma correção necessária, o arquivo já parece moderno.')
+    except Exception as e:
+        logging.error(f"Não foi possível corrigir o arquivo '{caminho_arquivo}': {e}")
+
+# --- PARTE 1: CRIAÇÃO E ESTRUTURAÇÃO DO AMBIENTE VIRTUAL ---
+
+def configurar_ambiente_dash() -> Optional[Tuple[Path, Path]]:
+    logging.info('--- FASE 1: Configurando o Ambiente Virtual ---')
+    
+    if not shutil.which('git'):
+        logging.error('O comando "git" não foi encontrado. Por favor, instale o Git e adicione-o ao PATH.')
+        return None
+
+    if not PASTA_VENV.is_dir():
+        # CORREÇÃO APLICADA AQUI
+        if confirmar_acao(f"O ambiente virtual '{PASTA_VENV}' não existe. Deseja criá-lo agora?"):
+            logging.info(f"Criando ambiente virtual em '{PASTA_VENV}'...")
+            if not _executar_comando([sys.executable, '-m', 'venv', str(PASTA_VENV)]):
+                logging.error('Falha ao criar ambiente virtual.')
+                return None
+            logging.info('Ambiente virtual criado com sucesso.')
+        else:
+            logging.info('Operação cancelada. O script não pode continuar sem um ambiente virtual.')
+            return None
+    else:
+        logging.info('Ambiente virtual já existente verificado.')
+
+    executavel_python, executavel_pip = obter_caminhos_plataforma()
+
+    logging.info('Instalando pacotes essenciais no ambiente virtual...')
+    if not _executar_comando([str(executavel_pip), 'install'] + PACOTES_MODERNOS):
+        logging.error('Falha ao instalar pacotes modernos.')
+        return None
+    
+    logging.info('Pacotes modernos instalados com sucesso.')
+    logging.info('--- Ambiente configurado com sucesso! ---')
+    return executavel_python, executavel_pip
+
+# --- PARTE 2: EXEMPLO DE USO ---
+
+def executar_exemplo_de_repositorio(executavel_python: Path):
+    logging.info('\n--- FASE 2: Exemplo de Uso (Executando um Repositório) ---')
+    
+    url = input('Informe a URL do repositório Git para o exemplo de uso: ').strip()
+    if not url.startswith('http'):
+        logging.error('URL inválida. Forneça uma URL que comece com http ou https.')
+        return
+
+    if PASTA_PROJETO_CLONADO.exists():
+        # CORREÇÃO APLICADA AQUI
+        if not confirmar_acao(f"A pasta '{PASTA_PROJETO_CLONADO}' já existe. Deseja removê-la e clonar novamente?"):
+            logging.info('Clonagem cancelada.')
+            return
+        logging.info(f"Removendo diretório antigo: {PASTA_PROJETO_CLONADO}")
+        shutil.rmtree(PASTA_PROJETO_CLONADO, onerror=tratar_remocao_somente_leitura)
+    
+    logging.info(f"Clonando repositório de '{url}'...")
+    if not _executar_comando(['git', 'clone', url, str(PASTA_PROJETO_CLONADO)]):
+        logging.error('Falha ao clonar o repositório.')
+        return
+    logging.info('Repositório clonado com sucesso.')
+
+    caminho_script_app = None
+    for nome_script in NOMES_SCRIPT_APP:
+        if (PASTA_PROJETO_CLONADO / nome_script).exists():
+            caminho_script_app = PASTA_PROJETO_CLONADO / nome_script
+            # CORREÇÃO APLICADA AQUI
+            logging.info(f"Script da aplicação encontrado: '{nome_script}'")
+            break
+    
+    if not caminho_script_app:
+        logging.error(f"Não foi possível encontrar um script de aplicação ({' ou '.join(NOMES_SCRIPT_APP)}).")
+        return
+        
+    corrigir_arquivo_app(caminho_script_app)
+
+    # CORREÇÃO APLICADA AQUI
+    if not confirmar_acao(f"Tudo pronto. Deseja executar a aplicação '{caminho_script_app.name}' agora?"):
+        return
+
+    logging.info('--- Iniciando a aplicação web ---')
+    logging.info('A aplicação ficará rodando. Pressione CTRL+C nesta janela para parar o servidor.')
+    processo_servidor = None
+    try:
+        processo_servidor = subprocess.Popen([str(executavel_python), caminho_script_app.name], cwd=PASTA_PROJETO_CLONADO)
+        time.sleep(5)
+        logging.info(f'Abrindo navegador em {URL_APP}')
+        webbrowser.open(URL_APP)
+        processo_servidor.wait()
+    except KeyboardInterrupt:
+        logging.info('\nRecebido comando para encerrar. Desligando o servidor...')
+    except Exception as e:
+        logging.error(f'Ocorreu um erro ao executar a aplicação: {e}')
+    finally:
+        if processo_servidor:
+            processo_servidor.terminate()
+            processo_servidor.wait()
+        logging.info('--- Servidor da aplicação finalizado ---')
+
+# --- BLOCO PRINCIPAL DE EXECUÇÃO ---
+if __name__ == '__main__':
+    # FASE 1
+    ambiente_configurado = configurar_ambiente_dash()
+    
+    # Se a FASE 1 foi bem sucedida, executa a FASE 2
+    if ambiente_configurado:
+        python_exec, _ = ambiente_configurado
+        executar_exemplo_de_repositorio(python_exec)
+    
+    logging.info('Processo finalizado.')
