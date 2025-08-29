@@ -1,0 +1,197 @@
+# -*- coding: utf-8 -*-
+"""
+Script de Automação para Aplicações Dash a partir de um Repositório Git.
+
+Este script automatiza todo o processo de configuração e execução
+de uma aplicação Dash a partir do repositório específico da Alura.
+
+Funcionalidades:
+  - Criação e gerenciamento de um ambiente virtual Python ('env').
+  - Clonagem do repositório Git para uma pasta chamada 'dash_projeto'.
+  - Instalação das dependências do projeto a partir do 'requirements.txt'.
+  - Execução do servidor da aplicação e abertura automática no navegador.
+
+Autor: Marinaldo Laranjeira de Souza
+Data: 28 de agosto de 2025
+"""
+
+import os
+import subprocess
+import sys
+import logging
+import webbrowser
+import time
+import shutil
+import errno
+import stat
+from pathlib import Path
+from typing import Tuple, Optional, List
+
+# --- CONFIGURAÇÃO DO LOGGING ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    stream=sys.stdout,
+)
+
+# --- CONSTANTES ---
+URL_REPOSITORIO = 'https://github.com/alura-cursos/dash'
+PASTA_VENV = Path('env')
+PASTA_PROJETO = Path('dash_projeto')
+NOMES_SCRIPT_APP = ['main.py', 'app.py']
+# --- CORREÇÃO APLICADA AQUI ---
+# Ajustado para a porta correta em que a aplicação Dash está rodando.
+URL_APP = 'http://127.0.0.1:8080'
+
+# --- FUNÇÕES AUXILIARES DE BAIXO NÍVEL ---
+
+def _executar_comando(comando: List[str], pasta_trabalho: Optional[Path] = None) -> bool:
+    """Executa um comando de sistema em um subprocesso de forma segura."""
+    try:
+        logging.info(f"Executando em '{pasta_trabalho or '.'}': {' '.join(comando)}")
+        processo = subprocess.Popen(
+            comando, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding='utf-8', cwd=pasta_trabalho
+        )
+        _, stderr = processo.communicate()
+        if processo.returncode != 0:
+            # Não tratar output do pip como erro fatal, pois ele pode imprimir warnings.
+            if 'pip' not in comando[0]:
+                logging.error(f"Falha ao executar comando: {' '.join(comando)}\n{stderr}")
+                return False
+        return True
+    except FileNotFoundError:
+        logging.error(f"Comando '{comando[0]}' não encontrado. Verifique se o Git está instalado e no PATH.")
+        return False
+    except Exception as e:
+        logging.error(f'Erro inesperado ao executar o comando: {e}')
+        return False
+
+def confirmar_acao(mensagem: str) -> bool:
+    """Exibe uma mensagem para o usuário e aguarda uma confirmação (s/n)."""
+    while True:
+        try:
+            resposta = input(f'{mensagem} (s/n): ').lower().strip()
+            if resposta in ['s', 'sim', 'y', 'yes']: return True
+            if resposta in ['n', 'nao', 'não', 'no']:
+                logging.warning('Ação cancelada pelo usuário.')
+                return False
+            print('Resposta inválida. Por favor, digite "s" para sim ou "n" para não.')
+        except KeyboardInterrupt:
+            logging.warning('\nOperação interrompida pelo usuário.')
+            sys.exit(1)
+
+def obter_caminhos_plataforma() -> Tuple[Path, Path]:
+    """Determina os caminhos corretos para os executáveis do Python e Pip no venv."""
+    if sys.platform == 'win32':
+        return PASTA_VENV / 'Scripts' / 'python.exe', PASTA_VENV / 'Scripts' / 'pip.exe'
+    return PASTA_VENV / 'bin' / 'python', PASTA_VENV / 'bin' / 'pip'
+
+def tratar_remocao_somente_leitura(funcao, caminho, info_excecao):
+    """Callback para shutil.rmtree que lida com arquivos somente leitura (problema comum do Git)."""
+    valor_excecao = info_excecao[1]
+    if funcao in (os.rmdir, os.remove, os.unlink) and valor_excecao.errno == errno.EACCES:
+        os.chmod(caminho, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+        funcao(caminho)
+    else:
+        raise
+
+# --- FASE 1: CRIAÇÃO DO AMBIENTE E CLONAGEM DO PROJETO ---
+def preparar_ambiente_e_projeto() -> Optional[Tuple[Path, Path]]:
+    """
+    Orquestra a criação do ambiente virtual, a clonagem do repositório e a
+    instalação das dependências.
+    """
+    logging.info('--- FASE 1: Preparando Ambiente e Projeto ---')
+    
+    if not shutil.which('git'):
+        logging.error('O comando "git" não foi encontrado. Por favor, instale o Git.')
+        return None
+    
+    if PASTA_PROJETO.exists():
+        if not confirmar_acao(f"A pasta '{PASTA_PROJETO}' já existe. Deseja removê-la e clonar novamente?"):
+            logging.info('Clonagem cancelada. Usando a pasta existente.')
+        else:
+            logging.info(f"Removendo pasta '{PASTA_PROJETO}'...")
+            shutil.rmtree(PASTA_PROJETO, onerror=tratar_remocao_somente_leitura)
+            if not _executar_comando(['git', 'clone', URL_REPOSITORIO, str(PASTA_PROJETO)]): return None
+    else:
+        if not _executar_comando(['git', 'clone', URL_REPOSITORIO, str(PASTA_PROJETO)]): return None
+    
+    logging.info('Repositório clonado com sucesso.')
+
+    if not PASTA_VENV.is_dir():
+        logging.info(f"Criando ambiente virtual em '{PASTA_VENV}'...")
+        if not _executar_comando([sys.executable, '-m', 'venv', str(PASTA_VENV)]): return None
+    else:
+        logging.info('Ambiente virtual já existente verificado.')
+        
+    executavel_python, executavel_pip = obter_caminhos_plataforma()
+    
+    caminho_requirements = PASTA_PROJETO / 'requirements.txt'
+    
+    if not caminho_requirements.is_file():
+        logging.error(f"Arquivo 'requirements.txt' não encontrado em '{caminho_requirements}'.")
+        return None
+
+    logging.info(f"Instalando dependências de '{caminho_requirements}'...")
+    if not _executar_comando([str(executavel_pip), 'install', '-r', str(caminho_requirements)]):
+        return None
+        
+    logging.info('Dependências instaladas com sucesso.')
+    logging.info('--- Ambiente configurado com sucesso! ---')
+    return executavel_python, executavel_pip
+
+# --- FASE 2: EXECUÇÃO DA APLICAÇÃO ---
+def executar_aplicacao_dash(executavel_python: Path):
+    """
+    Encontra e executa o script principal da aplicação Dash.
+    """
+    logging.info('\n--- FASE 2: Executando a Aplicação Dash ---')
+    
+    if not PASTA_PROJETO.is_dir():
+        logging.error(f"A pasta do projeto '{PASTA_PROJETO}' não foi encontrada.")
+        return
+
+    caminho_script_app = None
+    for nome_script in NOMES_SCRIPT_APP:
+        if (PASTA_PROJETO / nome_script).exists():
+            caminho_script_app = PASTA_PROJETO / nome_script
+            logging.info(f"Script da aplicação encontrado: '{caminho_script_app}'"); break
+            
+    if not caminho_script_app:
+        logging.error(f"Não foi possível encontrar o script principal ({' ou '.join(NOMES_SCRIPT_APP)}) em '{PASTA_PROJETO}'.")
+        return
+        
+    if not confirmar_acao(f"Tudo pronto. Deseja executar a aplicação '{caminho_script_app.name}'?"): return
+    
+    logging.info('--- Iniciando a aplicação web (Pressione CTRL+C para parar) ---')
+    processo_servidor = None
+    try:
+        # O comando deve ser executado no diretório do projeto
+        processo_servidor = subprocess.Popen(
+            [str(executavel_python), caminho_script_app.name],
+            cwd=PASTA_PROJETO
+        )
+        time.sleep(5) # Aguarda o servidor iniciar
+        webbrowser.open(URL_APP)
+        processo_servidor.wait()
+    except KeyboardInterrupt:
+        logging.info('\nServidor encerrado pelo usuário.')
+    except Exception as e:
+        logging.error(f'Ocorreu um erro ao executar a aplicação: {e}')
+    finally:
+        if processo_servidor:
+            processo_servidor.terminate()
+            processo_servidor.wait()
+        logging.info('--- Servidor da aplicação finalizado ---')
+
+# --- BLOCO PRINCIPAL DE EXECUÇÃO ---
+if __name__ == '__main__':
+    ambiente = preparar_ambiente_e_projeto()
+    
+    if ambiente:
+        python_exec, _ = ambiente
+        executar_aplicacao_dash(python_exec)
+    
+    logging.info('Processo finalizado.')
