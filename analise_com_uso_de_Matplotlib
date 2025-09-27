@@ -1,0 +1,125 @@
+"""
+Análise de Dados de Imigração para o Canadá (1980-2013)
+
+Este script carrega, processa e visualiza dados de imigração para o Canadá
+a partir de um arquivo CSV público. Ele realiza uma análise para um conjunto
+específico de países e exibe os resultados em tempo real, sem gerar arquivos de saída.
+
+Funcionalidades:
+- Carrega dados de uma URL.
+- Valida e limpa os dados.
+- Filtra informações para países de interesse.
+- Gera um DataFrame com a série temporal de imigração.
+- Exibe um gráfico de linhas comparativo utilizando Matplotlib.
+- Registra o progresso da execução no console.
+"""
+
+import pandas as pd
+import logging
+import sys
+import matplotlib.pyplot as plt
+
+# Configura o logging para exibir as mensagens de execução no console.
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+def criar_grafico_imigracao(df: pd.DataFrame):
+    """Gera e exibe um gráfico de linhas da imigração ao longo do tempo.
+
+    Args:
+        df (pd.DataFrame): DataFrame processado contendo os dados de imigração,
+                           com anos como índice e países como colunas.
+    """
+    logging.info("Gerando o gráfico de imigração para exibição.")
+    try:
+        plt.style.use('seaborn-v0_8-darkgrid')
+        fig, ax = plt.subplots(figsize=(12, 7))
+
+        # Seleciona apenas as colunas dos países para o gráfico.
+        paises_a_plotar = df.columns.drop('n_imigrantes_total', errors='ignore')
+        df.plot(kind='line', y=paises_a_plotar, ax=ax, marker='o', linestyle='-')
+        
+        # Customiza os elementos visuais do gráfico.
+        ax.set_title('Imigração para o Canadá (1980-2013)', fontsize=16)
+        ax.set_ylabel('Número de Imigrantes', fontsize=12)
+        ax.set_xlabel('Ano', fontsize=12)
+        ax.legend(title='País', fontsize=10)
+        ax.grid(True) # Garante que a grade esteja visível.
+        
+        # Exibe o gráfico em uma janela.
+        plt.show()
+
+    except Exception as e:
+        logging.error(f"Ocorreu um erro ao gerar o gráfico: {e}")
+
+def processar_dados_imigracao(paises: list, url: str) -> pd.DataFrame:
+    """Carrega e processa dados de imigração para um conjunto de países.
+
+    Args:
+        paises (list): Uma lista de strings com os nomes dos países a serem analisados.
+        url (str): A URL do arquivo CSV com os dados de imigração.
+
+    Returns:
+        pd.DataFrame: Um DataFrame processado com a série temporal de imigração
+                      para os países encontrados.
+    """
+    try:
+        logging.info(f"Iniciando o processamento para os países: {paises}")
+        df = pd.read_csv(url)
+        
+        # Validação da estrutura do DataFrame.
+        if 'País' not in df.columns:
+            logging.critical("Estrutura de dados inválida: coluna 'País' não encontrada.")
+            sys.exit("Erro crítico: Verifique o log para mais detalhes.")
+
+    except Exception as e:
+        logging.critical(f"Falha ao carregar os dados. Erro: {e}")
+        sys.exit("Erro crítico: Verifique o log para mais detalhes.")
+    
+    logging.info("Dados carregados com sucesso.")
+    
+    # Preparação dos dados: limpeza do índice e seleção de colunas de anos.
+    df.set_index('País', inplace=True)
+    df.index = df.index.str.strip()
+    anos = list(map(str, range(1980, 2014)))
+    
+    # Filtra o DataFrame para conter apenas os países de interesse que existem nos dados.
+    paises_encontrados = [pais for pais in paises if pais in df.index]
+    
+    if not paises_encontrados:
+        logging.error(f"Nenhum dos países especificados {paises} foi encontrado nos dados.")
+        return pd.DataFrame() # Retorna um DataFrame vazio.
+    
+    df_paises = df.loc[paises_encontrados, anos]
+    
+    # Reestrutura o DataFrame para análise de série temporal.
+    df_final = df_paises.transpose()
+    df_final.index.name = 'Ano'
+    df_final.index = df_final.index.astype(int)
+    
+    # Adiciona uma coluna com o total de imigrantes por ano.
+    df_final['n_imigrantes_total'] = df_final.sum(axis=1)
+    logging.info("Processamento de dados concluído.")
+
+    return df_final
+
+# --- Ponto de Entrada Principal do Script ---
+if __name__ == "__main__":
+    
+    # Parâmetros de configuração da análise.
+    URL_DADOS = 'https://raw.githubusercontent.com/alura-cursos/bibliotecas_visualizacao/refs/heads/main/Dados/imigrantes_canada.csv'
+    PAISES_DE_INTERESSE = ['Brasil', 'Argentina', 'Canadá']
+    
+    # Executa o pipeline de processamento e visualização.
+    resultado_df = processar_dados_imigracao(PAISES_DE_INTERESSE, URL_DADOS)
+    
+    if not resultado_df.empty:
+        criar_grafico_imigracao(resultado_df)
+        print("\n--- Análise Concluída ---")
+        print("Amostra dos dados processados:")
+        print(resultado_df.head())
+    else:
+        print("\n--- Análise Interrompida ---")
+        print("Nenhum dado foi processado, pois os países de interesse não foram encontrados.")
