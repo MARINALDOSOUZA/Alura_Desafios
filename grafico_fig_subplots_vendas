@@ -1,0 +1,68 @@
+"""
+Script para visualização de dados de vendas mensais de múltiplas lojas.
+
+Este script utiliza as bibliotecas pandas e matplotlib para gerar um painel (dashboard)
+com quatro gráficos de linha, um para cada loja, mostrando o desempenho de vendas
+ao longo de 2022. O objetivo é permitir uma análise visual individual de cada loja,
+mantendo uma escala de vendas consistente e um layout limpo para facilitar a comparação.
+"""
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def plot_sales_dashboard(lojas_data: list, vendas_data: dict):
+    """
+    Cria e exibe um dashboard 2x2 com o desempenho de vendas de cada loja.
+
+    Args:
+        lojas_data (list): Uma lista com os nomes das lojas que servirão de índice.
+        vendas_data (dict): Um dicionário com os dados de vendas, onde as chaves
+                            são os meses e os valores são listas de vendas por loja.
+    """
+    # --- 1. Processamento e Estruturação dos Dados ---
+    # Cria um DataFrame do pandas para facilitar a manipulação dos dados.
+    df_vendas = pd.DataFrame(vendas_data, index=lojas_data)
+
+    # --- 2. Configuração da Visualização ---
+    # Define um estilo visual para tornar os gráficos mais agradáveis.
+    plt.style.use('seaborn-v0_8-darkgrid')
+
+    # Cria uma figura e uma grade de subplots 2x2.
+    fig, axs = plt.subplots(2, 2, figsize=(14, 10))
+    fig.suptitle('Desempenho Individual de Vendas por Loja - 2022', fontsize=18)
+
+    # --- 3. Geração dos Gráficos ---
+    # Itera sobre a lista de lojas para criar um gráfico para cada uma.
+    for i, loja in enumerate(df_vendas.index):
+        ax = axs[i // 2, i % 2]
+        ax.plot(df_vendas.columns, df_vendas.loc[loja], marker='o', linestyle='-')
+
+        # --- 4. Customização de Cada Gráfico ---
+        ax.set_title(f'Loja {loja}', fontsize=12)
+        ax.set_xlabel('Meses')
+        ax.set_ylabel('Volume de Vendas')
+        ax.tick_params(axis='x', rotation=45)
+        ax.grid(True)
+        ax.set_ylim(0, 500)
+
+    # --- 5. Finalização e Exibição ---
+    # Ajusta o espaçamento entre os subplots para garantir que não haja sobreposição
+    # de títulos e rótulos. 'hspace' controla o espaço vertical e 'wspace' o horizontal.
+    fig.subplots_adjust(hspace=0.5, wspace=0.3)
+
+    # Exibe a figura final com todos os gráficos.
+    plt.show()
+
+# Bloco de execução principal: só roda quando o script é executado diretamente.
+if __name__ == "__main__":
+    
+    lojas_lista = ['A', 'B', 'C', 'D']
+    vendas_dict = {
+        'Jan': [100, 80, 150, 50], 'Fev': [120, 90, 170, 60],
+        'Mar': [150, 100, 200, 80], 'Abr': [180, 110, 230, 90],
+        'Mai': [220, 190, 350, 200], 'Jun': [230, 150, 280, 120],
+        'Jul': [250, 170, 300, 140], 'Ago': [260, 180, 310, 150],
+        'Set': [240, 160, 290, 130], 'Out': [220, 140, 270, 110],
+        'Nov': [400, 220, 350, 190], 'Dez': [300, 350, 400, 250]
+    }
+    
+    plot_sales_dashboard(lojas_lista, vendas_dict)
