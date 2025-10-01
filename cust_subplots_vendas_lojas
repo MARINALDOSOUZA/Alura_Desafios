@@ -1,0 +1,91 @@
+"""
+Gera um dashboard de análise de vendas para múltiplas lojas (2022).
+
+Utilizando Pandas para manipulação de dados e Matplotlib para visualização,
+este script cria um painel 2x2 com gráficos de linha individuais para cada loja.
+A visualização é padronizada para permitir uma comparação direta e clara
+do desempenho de vendas ao longo do ano.
+"""
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def plot_sales_dashboard(lojas_data: list, vendas_data: dict):
+    """
+    Cria e exibe um dashboard 2x2 com o desempenho de vendas de cada loja.
+
+    Args:
+        lojas_data (list): Lista com os nomes das lojas (para o índice do DataFrame).
+        vendas_data (dict): Dicionário com dados de vendas por mês.
+
+    Returns:
+        None: A função exibe o gráfico diretamente e não retorna valores.
+    """
+    # --- 1. Estruturação dos Dados ---
+    # Converte o dicionário de vendas em um DataFrame do Pandas para facilitar a manipulação.
+    df_vendas = pd.DataFrame(vendas_data, index=lojas_data)
+
+    # --- 2. Configuração da Figura Principal ---
+    # Define um estilo visual para tornar os gráficos mais agradáveis.
+    plt.style.use('seaborn-v0_8-darkgrid')
+
+    # Cria a figura e a grade de subplots 2x2. figsize controla o tamanho da janela.
+    fig, axs = plt.subplots(2, 2, figsize=(14, 10))
+    fig.suptitle('Desempenho Individual de Vendas por Loja - 2022', fontsize=22, x=0.1, ha='left')
+    
+    # Define uma paleta de cores fixa para garantir consistência visual entre os gráficos.
+    cores_fixas = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'] # Azul, Laranja, Verde, Vermelho
+
+    # --- 3. Geração e Customização dos Subplots ---
+    # Itera sobre cada loja para popular a grade de gráficos.
+    for i, loja in enumerate(df_vendas.index):
+        # Seleciona o subplot (eixo) correto na grade 2x2.
+        ax = axs[i // 2, i % 2]
+        
+        # Atribui a cor correspondente à loja atual.
+        cor_da_loja = cores_fixas[i]
+        
+        # Plota os dados de vendas da loja no eixo selecionado.
+        ax.plot(
+            df_vendas.columns, 
+            df_vendas.loc[loja], 
+            #marker='o',         # O marcador 'o' destaca os pontos de dados de cada mês.
+            linestyle='-', 
+            linewidth=2.5,
+            color=cor_da_loja
+        )
+
+        # Customiza os elementos de cada subplot.
+        ax.set_title(f'Loja {loja}', fontsize=14, loc='left', color=cor_da_loja)
+        ax.set_ylabel('Volume de Vendas', fontsize=12)
+        ax.tick_params(axis='x', rotation=45)
+        ax.grid(True)
+        
+        # Define um limite fixo para o eixo Y para garantir uma comparação visual justa.
+        ax.set_ylim(0, 500)
+
+    # Define um rótulo X comum para toda a figura, evitando redundância.
+    #fig.supxlabel('Meses', fontsize=14)
+
+    # --- 4. Finalização ---
+    # Ajusta o layout para garantir que os elementos do gráfico não se sobreponham.
+    plt.tight_layout(rect=[0, 0.03, 1, 0.96], h_pad=3.0)
+    
+    # Exibe a figura final.
+    plt.show()
+
+# --- Bloco de Execução Principal ---
+if __name__ == "__main__":
+    
+    # Define os dados de entrada para a análise.
+    lojas_lista = ['A', 'B', 'C', 'D']
+    vendas_dict = {
+        'Jan': [100, 80, 150, 50], 'Fev': [120, 90, 170, 60],
+        'Mar': [150, 100, 200, 80], 'Abr': [180, 110, 230, 90],
+        'Mai': [220, 190, 350, 200], 'Jun': [230, 150, 280, 120],
+        'Jul': [250, 170, 300, 140], 'Ago': [260, 180, 310, 150],
+        'Set': [240, 160, 290, 130], 'Out': [220, 140, 270, 110],
+        'Nov': [400, 220, 350, 190], 'Dez': [300, 350, 400, 250]
+    }
+    
+    # Chama a função principal para executar a análise e gerar o gráfico.
+    plot_sales_dashboard(lojas_lista, vendas_dict)
