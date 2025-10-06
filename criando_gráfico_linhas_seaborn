@@ -1,0 +1,98 @@
+"""
+Análise da Evolução da Imigração para o Canadá.
+
+Este script gera um gráfico de linhas para visualizar a tendência de imigração
+de um grupo de países, destacando o ano de pico e incluindo o total geral de
+imigrantes (formatado com separador de milhar) na legenda para cada país.
+"""
+import seaborn as sns
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def gerar_grafico_de_linhas_com_totais_na_legenda(lista_de_paises: list):
+    """
+    Cria um gráfico de linhas comparando a evolução da imigração,
+    destacando o pico e adicionando o total geral formatado na legenda.
+
+    Args:
+        lista_de_paises (list): A lista de países a serem incluídos no gráfico.
+
+    Returns:
+        None: A função exibe o gráfico diretamente.
+    """
+    # --- 1. Preparação dos Dados ---
+
+    url = "https://raw.githubusercontent.com/alura-cursos/bibliotecas_visualizacao/refs/heads/main/Dados/imigrantes_canada.csv"
+    df = pd.read_csv(url)
+
+    anos = list(map(str, range(1980, 2014)))
+    
+    # Filtra para os países de interesse. O .copy() evita avisos do Pandas.
+    df_selecionado = df[df['País'].isin(lista_de_paises)].copy()
+    
+    # Calcula o total para cada país (será usado na legenda).
+    df_selecionado['Total'] = df_selecionado[anos].sum(axis=1)
+    
+    # Prepara os dados para o gráfico de linhas (dados anuais).
+    df_para_linhas = df_selecionado[['País'] + anos].set_index('País')
+    df_temporal = df_para_linhas.transpose()
+    df_temporal.index = df_temporal.index.astype(int)
+
+    # --- 2. Criação e Customização do Gráfico ---
+
+    plt.figure(figsize=(14, 8))
+    sns.set_theme(style="whitegrid")
+    ax = plt.gca()
+
+    paleta_cores = sns.color_palette("viridis", n_colors=len(lista_de_paises))
+    
+    # Plota as linhas contínuas.
+    df_temporal.plot(kind='line', ax=ax, linewidth=2.5, color=paleta_cores)
+
+    # Encontra e plota um marcador no pico de cada país.
+    for i, pais in enumerate(df_temporal.columns):
+        pico_valor = df_temporal[pais].max()
+        ano_pico = df_temporal[pais].idxmax()
+        
+        ax.plot(
+            ano_pico, pico_valor, marker='o', markersize=8, color=paleta_cores[i],
+            markeredgecolor='black', markeredgewidth=0.5
+        )
+        
+        # Formata o número do pico com ponto de milhar e o exibe no gráfico.
+        texto_pico = f"{int(pico_valor):,}".replace(',', '.')
+        ax.text(
+            ano_pico, pico_valor + 200, texto_pico,
+            ha='center', va='bottom', fontsize=10, color=paleta_cores[i], fontweight='bold'
+        )
+
+    # Customiza a legenda para incluir o total formatado.
+    novos_rotulos = []
+    for pais in df_temporal.columns:
+        total_do_pais = df_selecionado.loc[df_selecionado['País'] == pais, 'Total'].iloc[0]
+        total_formatado = f"{int(total_do_pais):,}".replace(',', '.')
+        novo_rotulo = f"{pais} (Total: {total_formatado})"
+        novos_rotulos.append(novo_rotulo)
+
+    ax.legend(novos_rotulos, title='País', fontsize=12, loc='upper left')
+
+    # --- 3. Finalização ---
+
+    ax.set_title(
+        'Evolução da Imigração para o Canadá (1980-2013)\n(Picos de Imigração Destacados)', 
+        fontsize=18, loc='center'
+    )
+    ax.set_xlabel('Ano', fontsize=14)
+    ax.set_ylabel('Número de Imigrantes', fontsize=14)
+    ax.tick_params(axis='x', labelsize=12)
+    ax.tick_params(axis='y', labelsize=12)
+    ax.set_ylim(0, 7000)
+
+    sns.despine(left=True, bottom=True)
+    plt.tight_layout()
+    plt.show()
+
+# --- Bloco de Execução Principal ---
+if __name__ == "__main__":
+    paises_para_analisar = ['Brasil', 'Argentina', 'Peru', 'Colômbia']
+    gerar_grafico_de_linhas_com_totais_na_legenda(paises_para_analisar)
