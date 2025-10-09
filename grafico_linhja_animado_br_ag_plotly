@@ -1,0 +1,143 @@
+"""
+Dashboard Animado de Análise de Imigração com Python e Plotly.
+
+Este script cria um gráfico de linhas animado e interativo para comparar a
+evolução da imigração do Brasil e da Argentina para o Canadá entre 1980 e 2013.
+
+Funcionalidades Avançadas:
+- Animação controlada por botão 'Play' e um slider de anos.
+- Destaque dinâmico do ano de pico de imigração para cada país, com um
+  marcador especial que aparece somente quando a animação atinge o ano correspondente.
+- Customização completa de layout, incluindo fontes, títulos e espessura das linhas.
+"""
+import pandas as pd
+import plotly.graph_objects as go
+
+def gerar_grafico_animado_final():
+    '''
+    Cria e exibe um gráfico de linhas animado e altamente customizado.
+
+    A função constrói a animação frame a frame, onde cada frame representa um ano.
+    A lógica inclui a adição condicional de marcadores de pico, que só se tornam
+    visíveis na animação a partir do ano em que o pico de imigração ocorreu.
+
+    Returns:
+        None: A função exibe o gráfico interativo diretamente na tela ou no navegador.
+    '''
+    # --- 1. Preparação dos Dados ---
+    try:
+        url = 'https://raw.githubusercontent.com/alura-cursos/bibliotecas_visualizacao/refs/heads/main/Dados/imigrantes_canada.csv'
+        df = pd.read_csv(url)
+    except Exception as e:
+        print(f'Erro ao carregar o arquivo CSV: {e}')
+        return
+
+    paises_selecionados = ['Brasil', 'Argentina']
+    df_filtrado = df[df['País'].isin(paises_selecionados)].copy()
+
+    if df_filtrado.empty:
+        print('Dados não encontrados para Brasil ou Argentina.')
+        return
+
+    # Converte o DataFrame de formato 'largo' para 'longo' para facilitar a animação.
+    anos = list(map(str, range(1980, 2014)))
+    df_long = df_filtrado.melt(
+        id_vars=['País'], value_vars=anos, var_name='Ano', value_name='Imigrantes'
+    )
+    df_long['Ano'] = df_long['Ano'].astype(int)
+    
+    # Separa os dados por país e pré-calcula os picos para uso posterior.
+    df_brasil = df_long[df_long['País'] == 'Brasil']
+    df_argentina = df_long[df_long['País'] == 'Argentina']
+    anos_unicos = df_long['Ano'].unique()
+    
+    pico_brasil_valor = df_brasil['Imigrantes'].max()
+    pico_brasil_ano = df_brasil.loc[df_brasil['Imigrantes'].idxmax(), 'Ano']
+    
+    pico_argentina_valor = df_argentina['Imigrantes'].max()
+    pico_argentina_ano = df_argentina.loc[df_argentina['Imigrantes'].idxmax(), 'Ano']
+
+    # --- 2. Criação da Figura e Definição do Estado Inicial ---
+    
+    # Inicia uma figura vazia com o Graph Objects para controle total.
+    fig = go.Figure()
+
+    # Adiciona os traços (traces) das linhas no seu estado inicial (apenas o ano de 1980).
+    # Isso define a aparência e a legenda do gráfico antes da animação começar.
+    fig.add_trace(go.Scatter(
+        x=[df_brasil['Ano'].min()], y=df_brasil[df_brasil['Ano'] == df_brasil['Ano'].min()]['Imigrantes'],
+        name='Brasil', mode='lines', line=dict(width=3.5)
+    ))
+    fig.add_trace(go.Scatter(
+        x=[df_argentina['Ano'].min()], y=df_argentina[df_argentina['Ano'] == df_argentina['Ano'].min()]['Imigrantes'],
+        name='Argentina', mode='lines', line=dict(width=3.5)
+    ))
+    
+    # Adiciona os traços para os marcadores de pico, inicialmente vazios.
+    # Isso "reserva" o lugar deles na estrutura do gráfico para a animação.
+    fig.add_trace(go.Scatter(x=[], y=[], mode='markers', name='Pico Brasil', showlegend=False))
+    fig.add_trace(go.Scatter(x=[], y=[], mode='markers', name='Pico Argentina', showlegend=False))
+
+    # --- 3. Construção dos Frames da Animação ---
+    
+    frames = []
+    # Itera sobre cada ano para criar um "quadro" (frame) da animação.
+    for ano in anos_unicos:
+        # Fatias de dados que crescem a cada ano.
+        dados_brasil_ate_ano = df_brasil[df_brasil['Ano'] <= ano]
+        dados_argentina_ate_ano = df_argentina[df_argentina['Ano'] <= ano]
+        
+        # Lógica condicional: os dados do pico só são preenchidos quando o ano da animação alcança o ano do pico.
+        pico_brasil_data = {'x': [pico_brasil_ano], 'y': [pico_brasil_valor]} if ano >= pico_brasil_ano else {'x': [], 'y': []}
+        pico_argentina_data = {'x': [pico_argentina_ano], 'y': [pico_argentina_valor]} if ano >= pico_argentina_ano else {'x': [], 'y': []}
+        
+        # Cada frame contém a definição de TODOS os traços para aquele ponto no tempo.
+        frame = go.Frame(
+            name=str(ano),
+            data=[
+                go.Scatter(x=dados_brasil_ate_ano['Ano'], y=dados_brasil_ate_ano['Imigrantes']),
+                go.Scatter(x=dados_argentina_ate_ano['Ano'], y=dados_argentina_ate_ano['Imigrantes']),
+                go.Scatter(x=pico_brasil_data['x'], y=pico_brasil_data['y'], mode='markers', marker=dict(size=12, symbol='star', color='gold', line=dict(width=1, color='black'))),
+                go.Scatter(x=pico_argentina_data['x'], y=pico_argentina_data['y'], mode='markers', marker=dict(size=12, symbol='star', color='gold', line=dict(width=1, color='black')))
+            ]
+        )
+        frames.append(frame)
+
+    fig.frames = frames
+
+    # --- 4. Configuração dos Controles de Animação ---
+    
+    def criar_configuracoes_layout_animacao():
+        """Define a estrutura dos botões de Play/Pause e do slider de anos."""
+        return {'updatemenus': [{'type': 'buttons','buttons': [{'label': 'Play','method': 'animate','args': [None, {'frame': {'duration': 100, 'redraw': True}, 'fromcurrent': True, 'transition': {'duration': 0}}]}, {'label': 'Pause','method': 'animate','args': [[None], {'frame': {'duration': 0, 'redraw': False}, 'mode': 'immediate', 'transition': {'duration': 0}}]
+        }],'direction': 'left','pad': {'r': 10, 't': 87},'showactive': False,'x': 0.1,'xanchor': 'right','y': 0,'yanchor': 'top'}],'sliders': [{'steps': [{'label': str(ano),'method': 'animate','args': [[str(ano)], {'frame': {'duration': 100, 'redraw': True}, 'mode': 'immediate', 'transition': {'duration': 0}}]} for ano in anos_unicos],'active': 0,'pad': {'t': 50, 'b': 10},'len': 0.9,'x': 0.5,'xanchor': 'center','y': 0,'yanchor': 'top'}]}
+
+    # --- 5. Layout Final e Exibição ---
+    
+    # Aplica todas as customizações de estilo e as configurações de animação.
+    fig.update_layout(
+        title_text='<b>Imigração de Brasil e Argentina para o Canadá (1980-2013)</b>',
+        title_x=0.05,
+        title_font_size=24,
+        
+        xaxis_title='Ano',
+        yaxis_title='Número de Imigrantes',
+        xaxis_title_font_size=16,
+        yaxis_title_font_size=16,
+        
+        xaxis_tickfont_size=16,
+        yaxis_tickfont_size=16,
+        
+        legend_font_size=16,
+        
+        xaxis_range=[anos_unicos.min() - 1, anos_unicos.max() + 1],
+        yaxis_range=[0, df_long['Imigrantes'].max() * 1.1],
+        
+        **criar_configuracoes_layout_animacao()
+    )
+
+    fig.show()
+
+# --- Bloco de Execução Principal ---
+if __name__ == '__main__':
+    gerar_grafico_animado_final()
