@@ -1,0 +1,241 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import urllib.request
+import os
+import matplotlib.colors as mcolors # Para trabalhar com cores e colormaps
+
+# ==============================================================================
+# FUNÇÃO: GRÁFICO 1 - LUCRO POR ANO
+# ==============================================================================
+def plotar_lucro_por_ano(df_dados):
+    """
+    Gera e exibe um gráfico de barras vertical do Lucro total por Ano.
+
+    O gráfico utiliza um degradê azul e formata os rótulos de dados
+    para ficarem acima das barras.
+
+    Parâmetros:
+    df_dados (pd.DataFrame): DataFrame contendo as colunas necessárias 
+                             ('data_pedido', 'lucro').
+    """
+    print("\nGerando Gráfico 1: Lucro por Ano...")
+
+    # --- 1. Preparação dos Dados ---
+    # Agrupa os dados por ano e soma o lucro de cada ano.
+    df_ano = df_dados.groupby(df_dados['data_pedido'].dt.year)['lucro'].sum()
+    df_ano = df_ano.reset_index().rename(columns={'data_pedido': 'ano'})
+
+    # --- 2. Preparação das Cores (Degradê) ---
+    cmap = plt.cm.get_cmap('Blues') 
+    norm = mcolors.Normalize(vmin=df_ano['lucro'].min(), vmax=df_ano['lucro'].max())
+    colors = [cmap(norm(lucro)) for lucro in df_ano['lucro']]
+
+    # --- 3. Criação da Figura e Eixos (ax) ---
+    fig, ax = plt.subplots(figsize=(12, 7)) 
+    bars = ax.bar(df_ano['ano'], df_ano['lucro'], color=colors) 
+
+    # --- 4. Configuração de Estilo e Rótulos ---
+    ax.set_title('Lucro de Vendas por Ano (Unificado)', fontsize=24, loc='left', pad=20)
+    ax.set_xticks(df_ano['ano']) 
+    ax.tick_params(axis='x', labelsize=14)
+    
+    # Remove o eixo Y (números e rótulo)
+    ax.set_yticks([])
+
+    # Remove todas as bordas do gráfico
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    
+    # Remove os "ticks" (pequenas marcas) dos eixos
+    ax.tick_params(axis='y', length=0) 
+    ax.tick_params(axis='x', length=0) 
+
+    # --- 5. Adicionar Rótulos de Dados (Valores) ---
+    # Itera sobre cada barra para adicionar o valor de lucro formatado acima dela.
+    for bar in bars:
+        yval = bar.get_height()
+        lucro_formatado = "R$ {:,.2f}".format(yval).replace(',', 'X').replace('.', ',').replace('X', '.')
+        
+        ax.text(bar.get_x() + bar.get_width()/2, 
+                yval + (df_ano['lucro'].max() * 0.02), # Posição Y: um pouco acima da barra
+                lucro_formatado, 
+                ha='center', va='bottom',
+                fontsize=14, weight='bold', color='dimgray')
+
+    print("...Figura 1 (Lucro/Ano) criada em memória.")
+    # plt.show() é chamado no final do script
+
+# ==============================================================================
+# FUNÇÃO: GRÁFICO 2 - TOP 10 PRODUTOS
+# ==============================================================================
+def plota_vendas_10(df_dados):
+    """
+    Gera e exibe um gráfico de barras horizontal dos 10 produtos com
+    maior valor total de venda.
+
+    - As 5 barras inferiores têm cor uniforme; as 5 superiores têm degradê verde.
+    - Os valores são formatados e exibidos dentro das barras.
+    - Uma caixa de texto com destaques dos Top 3 é adicionada no espaço
+      vazio do gráfico.
+
+    Parâmetros:
+    df_dados (pd.DataFrame): DataFrame contendo as colunas necessárias 
+                             ('tipo_produto', 'vendas').
+    """
+    print("\nGerando Gráfico 2: Top 10 Produtos por Venda...")
+
+    # --- 1. Preparação dos Dados ---
+    # Agrupa por produto, soma as vendas, pega o Top 10
+    df_produtos = df_dados.groupby('tipo_produto')['vendas'].sum().reset_index()
+    df_top10 = df_produtos.sort_values(by='vendas', ascending=False).head(10)
+    
+    # Reordena de menor para maior para plotagem correta no barh (maior fica no topo)
+    df_top10 = df_top10.sort_values(by='vendas', ascending=True)
+    
+    # Formata os nomes dos produtos (ex: "Pneus", "Ferramentas De Jardinagem")
+    df_top10['tipo_produto'] = df_top10['tipo_produto'].str.title()
+
+    # --- 2. Preparação das Cores (Lógica customizada) ---
+    cmap = plt.cm.get_cmap('Greens') 
+    norm = mcolors.Normalize(vmin=df_top10['vendas'].min(), vmax=df_top10['vendas'].max())
+    
+    # Define uma cor uniforme para as 5 barras inferiores
+    cor_uniforme = cmap(norm(df_top10['vendas'].iloc[4]))
+    
+    colors = []
+    for i, venda in enumerate(df_top10['vendas']):
+        if i < 5: # 5 menores (índices 0-4)
+            colors.append(cor_uniforme)
+        else: # 5 maiores (índices 5-9)
+            colors.append(cmap(norm(venda))) # Degradê
+
+    # --- 3. Criação da Figura e Eixos (ax) ---
+    fig, ax = plt.subplots(figsize=(12, 8)) 
+    bars = ax.barh(df_top10['tipo_produto'], df_top10['vendas'], color=colors) 
+
+    # --- 4. Configuração de Estilo e Rótulos ---
+    ax.set_title('Top 10 Produtos por Valor de Venda (2016-2019)', fontsize=24, loc='left', pad=20)
+    
+    # Remove o eixo X (números)
+    ax.set_xticks([])
+
+    # Remove todas as bordas do gráfico
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+
+    # Configura os rótulos do eixo Y (Produtos)
+    ax.tick_params(axis='y', length=-0, labelsize=14) 
+    ax.tick_params(axis='x', length=0)
+    
+    # --- 5. Adicionar Rótulos de Dados (Valores) ---
+    # Itera sobre cada barra para adicionar o valor de venda formatado DENTRO dela.
+    for bar in bars:
+        xval = bar.get_width()
+        venda_formatada = "R$ {:,.2f}".format(xval).replace(',', 'X').replace('.', ',').replace('X', '.')
+        
+        ax.text(xval * 0.98, # Posição X: 98% da largura da barra (dentro)
+                bar.get_y() + bar.get_height()/2,        
+                venda_formatada, 
+                ha='right', va='center', # Alinhado à direita
+                fontsize=14, weight='bold', color='white')
+
+    # ==================================================================
+    # --- 6. Adicionar Caixa de Destaque (Top 3) ---
+    # ==================================================================
+    
+    # Pega os dados dos Top 3 (os 3 últimos itens do df_top10)
+    prod_1_nome = df_top10['tipo_produto'].iloc[-1]
+    prod_1_val = df_top10['vendas'].iloc[-1]
+    prod_2_nome = df_top10['tipo_produto'].iloc[-2]
+    prod_2_val = df_top10['vendas'].iloc[-2]
+    prod_3_nome = df_top10['tipo_produto'].iloc[-3]
+    prod_3_val = df_top10['vendas'].iloc[-3]
+    
+    # Formata os valores R$
+    val_1_fmt = "R$ {:,.2f}".format(prod_1_val).replace(',', 'X').replace('.', ',').replace('X', '.')
+    val_2_fmt = "R$ {:,.2f}".format(prod_2_val).replace(',', 'X').replace('.', ',').replace('X', '.')
+    val_3_fmt = "R$ {:,.2f}".format(prod_3_val).replace(',', 'X').replace('.', ',').replace('X', '.')
+    
+    # Cria o texto formatado (multi-linhas)
+    texto_destaque = (
+        f"Destaques do Período:\n\n"
+        f"A categoria {prod_1_nome} liderou as vendas,\n"
+        f"gerando {val_1_fmt} no total.\n\n"
+        f"Seguida por {prod_2_nome} ({val_2_fmt})\n"
+        f"e {prod_3_nome} ({val_3_fmt})."
+    )
+    
+    # Define o estilo da caixa (fundo branco, borda vermelha)
+    props_caixa = dict(boxstyle='square, pad=0.5', facecolor='white', edgecolor='red', linewidth=1)
+
+    # Adiciona o texto e a caixa ao gráfico
+    # Coordenadas (0.7, 0.25) significam:
+    # 70% da esquerda para a direita (eixo x)
+    # 25% de baixo para cima (eixo y)
+    ax.text(0.7, 0.25, texto_destaque, 
+            transform=ax.transAxes, # Usa coordenadas relativas (0 a 1)
+            fontsize=12, 
+            #weight='bold', 
+            color='black',
+            ha='left', 
+            va='bottom', 
+            bbox=props_caixa) # Aplica o estilo da caixa
+
+    # Ajusta o layout para garantir que nada seja cortado
+    fig.tight_layout()
+
+    print("...Figura 2 (Vendas/Produto) criada em memória.")
+    # plt.show() é chamado no final do script
+
+# ==============================================================================
+# CORPO PRINCIPAL DO SCRIPT
+# ==============================================================================
+
+# --- 1. Configuração Inicial ---
+url = 'https://github.com/alura-cursos/dataviz-graficos/raw/refs/heads/master/dados/relatorio_vendas.csv'
+arquivo_local = 'relatorio_temp.csv' 
+
+# Lista de colunas que REALMENTE serão usadas nos gráficos
+colunas_desejadas = [
+    'data_pedido', 
+    'tipo_produto', 
+    'vendas', 
+    'lucro'
+]
+
+# --- 2. Download dos Dados (Condicional) ---
+if not os.path.exists(arquivo_local):
+    print(f"Arquivo '{arquivo_local}' não encontrado. Baixando...")
+    urllib.request.urlretrieve(url, arquivo_local)
+    print("...Download concluído.")
+else:
+    print(f"Arquivo '{arquivo_local}' já existe. Usando arquivo local.")
+
+
+# --- 3. Carga e Processamento dos Dados ---
+print("Processando arquivo local...")
+df_estatisticas = pd.read_csv(arquivo_local, usecols=colunas_desejadas)
+
+# Normaliza a coluna de data (essencial para agrupar por ano)
+df_estatisticas['data_pedido'] = pd.to_datetime(df_estatisticas['data_pedido'])
+print("...Processamento concluído.")
+
+# --- 4. Exibição Prévia dos Dados ---
+print("\n--- Resultado do DataFrame ---")
+print(df_estatisticas.head())
+
+# --- 5. Geração dos Gráficos ---
+# Chama as funções que criam as figuras em memória
+plotar_lucro_por_ano(df_estatisticas)
+plota_vendas_10(df_estatisticas)
+
+# --- 6. Exibição dos Gráficos ---
+# O plt.show() único abre todas as figuras criadas (Gráfico 1 e 2)
+print("\n...Exibindo todos os gráficos. Feche as janelas para finalizar o script.")
+plt.show()
+
+print("\nScript finalizado.")
