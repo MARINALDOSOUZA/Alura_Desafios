@@ -1,0 +1,290 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import urllib.request
+import os
+import matplotlib.colors as mcolors # Para trabalhar com cores e colormaps
+import matplotlib.ticker as mtick # Para formatar eixos como percentual
+import locale # Para formatar como moeda
+
+def configurar_locale():
+    """
+    Configura o 'locale' global para Português do Brasil (pt_BR).
+    
+    Tenta múltiplos padrões (UTF-8, Windows) para garantir a 
+    correta formatação de valores como moeda (ex: R$ 1.000,00).
+    """
+    print("Configurando locale para pt_BR (formatação de moeda)...")
+    try:
+        # Tenta o padrão mais comum para UTF-8
+        locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+    except locale.Error:
+        try:
+            # Tenta um padrão alternativo (comum no Windows)
+            locale.setlocale(locale.LC_ALL, 'Portuguese_Brazil.1252')
+        except locale.Error:
+            try:
+                 # Tenta um padrão mais genérico
+                locale.setlocale(locale.LC_ALL, 'pt_BR')
+            except locale.Error:
+                # Fallback se tudo falhar
+                print("Aviso: Não foi possível configurar o locale para pt_BR. A formatação de moeda pode não funcionar (R$).")
+
+def baixar_dados(url, arquivo_local):
+    """
+    Verifica a existência de um arquivo local e, se ausente, baixa os dados da URL.
+
+    Args:
+        url (str): A URL completa para o download do arquivo.
+        arquivo_local (str): O nome do arquivo para salvar localmente.
+
+    Returns:
+        bool: True se o arquivo estiver pronto para uso, False se o download falhar.
+    """
+    print(f"Verificando arquivo de dados: {arquivo_local}")
+    if not os.path.exists(arquivo_local):
+        print("Arquivo não encontrado. Baixando dados...")
+        try:
+            urllib.request.urlretrieve(url, arquivo_local)
+            print(f"Arquivo '{arquivo_local}' baixado com sucesso.")
+        except Exception as e:
+            print(f"Erro crítico ao baixar o arquivo: {e}")
+            return False
+    else:
+        print(f"Arquivo '{arquivo_local}' já existe.")
+    return True
+
+def carregar_dados(arquivo_local):
+    """
+    Carrega os dados do arquivo CSV local e realiza o pré-processamento.
+
+    Converte a coluna 'data_pedido' para datetime e extrai o 'ano'
+    para possibilitar análises temporais.
+
+    Args:
+        arquivo_local (str): O caminho para o arquivo CSV.
+
+    Returns:
+        pd.DataFrame | None: Um DataFrame processado ou None se a carga falhar.
+    """
+    print("Carregando e processando dados...")
+    try:
+        df = pd.read_csv(arquivo_local)
+        print("\nDataFrame carregado com sucesso.")
+        print("Nomes das colunas no DataFrame:")
+        print(df.columns.tolist())
+
+        # --- Pré-processamento Comum ---
+        if 'data_pedido' in df.columns:
+            df['data_pedido'] = pd.to_datetime(df['data_pedido'])
+            df['ano'] = df['data_pedido'].dt.year
+            print("Coluna 'ano' extraída da 'data_pedido'.")
+        else:
+            print("Aviso: Coluna 'data_pedido' não encontrada. A análise de Vendas por Ano pode falhar.")
+        
+        return df
+
+    except pd.errors.EmptyDataError:
+        print(f"Erro: O arquivo '{arquivo_local}' está vazio.")
+        return None
+    except Exception as e:
+        print(f"Erro ao carregar ou processar o CSV: {e}")
+        return None
+
+def plotar_vendas_centro_oeste(df):
+    """
+    Gera e exibe a análise de vendas por estado na Região Centro-Oeste.
+
+    Cria um gráfico de barras empilhadas (2017 vs 2018) com estilo minimalista,
+    removendo eixos e destacando os valores de vendas diretamente nas barras.
+    Também imprime uma análise textual da liderança de vendas no console.
+
+    Args:
+        df (pd.DataFrame): DataFrame processado contendo os dados de vendas.
+    """
+    print("\n--- Iniciando Análise de Vendas por Estado (Centro-Oeste) ---")
+    
+    colunas_necessarias = ['regiao', 'ano', 'estado', 'vendas']
+    if not all(col in df.columns for col in colunas_necessarias):
+        print("Erro: Colunas necessárias para esta análise não estão no DataFrame.")
+        return
+
+    # --- Filtrar e Agregar Dados ---
+    df_co = df[
+        (df['regiao'] == 'Centro-Oeste') &
+        (df['ano'].isin([2017, 2018]))
+    ].copy()
+
+    if df_co.empty:
+        print("Não foram encontrados dados para a Região Centro-Oeste nos anos 2017 e 2018.")
+        return
+
+    vendas_co_por_estado = df_co.groupby(['ano', 'estado'])['vendas'].sum().unstack()
+
+    # --- Plotar Gráfico ---
+    fig1, ax1 = plt.subplots(figsize=(10, 7))
+    vendas_co_por_estado.plot(
+        kind='bar',
+        stacked=True,
+        ax=ax1,
+        rot=0,
+        colormap='viridis' # Paleta Sequencial
+    )
+    
+    # --- Estilização do Gráfico (Design Minimalista) ---
+    ax1.set_title('Vendas por Estado na Região Centro-Oeste (2017-2018)', fontsize=20, pad=20, loc='left')
+    ax1.legend(title='Estado', 
+               bbox_to_anchor=(1.05, 1), 
+               loc='upper left', 
+               fontsize=12, 
+               title_fontsize=14)
+    ax1.set_xlabel('') # Remove o rótulo do eixo X
+    ax1.set_yticks([]) # Remove o eixo Y
+    ax1.tick_params(axis='x', length=0, labelsize=16) # Aumenta o "ano" e remove "tiques"
+    
+    # Remove as bordas do gráfico
+    ax1.spines['top'].set_visible(False)
+    ax1.spines['right'].set_visible(False)
+    ax1.spines['left'].set_visible(False)
+    ax1.spines['bottom'].set_visible(False)
+    
+    # --- Adicionar Rótulos de Dados (Valores) ---
+    print("Adicionando rótulos ao Gráfico 1...")
+    for container in ax1.containers:
+        state_name = container.get_label()
+        # Formata o rótulo como "SIGLA - R$ VALOR"
+        fmt_func = lambda v, s=state_name: f"{s} - {locale.currency(v, grouping=True)}" if v > 0 else ''
+
+        ax1.bar_label(
+            container,
+            fmt=fmt_func,
+            label_type='center',
+            fontsize=8,
+            color='black', # Cor PRETA para melhor contraste com 'viridis'
+            weight='bold'
+        )
+    
+    plt.tight_layout()
+
+    # --- Análise Textual (Console) ---
+    top_2017 = vendas_co_por_estado.loc[2017].idxmax()
+    top_2017_vendas = vendas_co_por_estado.loc[2017].max()
+    top_2018 = vendas_co_por_estado.loc[2018].idxmax()
+    top_2018_vendas = vendas_co_por_estado.loc[2018].max()
+
+    print("\nAnálise - Vendas Centro-Oeste:")
+    print(f"  Estado com mais vendas em 2017: {top_2017} (R$ {top_2017_vendas:,.2f})")
+    print(f"  Estado com mais vendas em 2018: {top_2018} (R$ {top_2018_vendas:,.2f})")
+    if top_2017 == top_2018:
+        print(f"  Conclusão: {top_2017} permaneceu como o estado com maior volume de vendas na região.")
+    else:
+        print("  Conclusão: O estado com maior volume de vendas mudou de 2017 para 2018.")
+
+def plotar_modos_envio_departamento(df):
+    """
+    Gera e exibe a análise percentual dos modos de envio por departamento.
+
+    Cria um gráfico de barras horizontais empilhadas com estilo minimalista,
+    destacando os percentuais dentro das barras e mostrando apenas o
+    marcador de 100% como referência de escala.
+
+    Args:
+        df (pd.DataFrame): DataFrame processado contendo os dados de vendas.
+    """
+    print("\n--- Iniciando Análise Percentual de Modos de Envio por Departamento ---")
+
+    colunas_necessarias = ['departamento', 'modo_envio']
+    if not all(col in df.columns for col in colunas_necessarias):
+        print("Erro: Colunas necessárias para esta análise não estão no DataFrame.")
+        return
+
+    # --- Calcular Distribuição Percentual ---
+    dist_modo_envio_pct = pd.crosstab(
+        df['departamento'],
+        df['modo_envio'],
+        normalize='index' # Calcula o percentual por linha (departamento)
+    )
+
+    # --- Plotar Gráfico ---
+    fig2, ax2 = plt.subplots(figsize=(12, 8))
+    (dist_modo_envio_pct * 100).plot(
+        kind='barh',
+        stacked=True,
+        ax=ax2,
+        colormap='tab20' # Paleta Qualitativa (para categorias)
+    )
+    
+    # --- Estilização do Gráfico (Design Minimalista) ---
+    ax2.set_title('Distribuição Percentual do Modo de Envio por Departamento', fontsize=24, pad=20, loc='left')
+    ax2.legend(title='Modo de Envio', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=12, title_fontsize=14)
+
+    ax2.set_xlabel('') # Remove rótulo do eixo X
+    ax2.set_ylabel('') # Remove rótulo do eixo Y
+    
+    # Define o eixo X para mostrar APENAS o 100%
+    ax2.set_xticks([100])
+    ax2.xaxis.set_major_formatter(mtick.PercentFormatter())
+    
+    # Estiliza eixos X e Y
+    ax2.tick_params(axis='y', length=0, labelsize=12) # Remove "tiques" do Y e aumenta fonte
+    ax2.tick_params(axis='x', length=0, labelsize=12) # Remove "tiques" do X e aumenta fonte
+    
+    # Remove as bordas do gráfico
+    ax2.spines['top'].set_visible(False)
+    ax2.spines['right'].set_visible(False)
+    ax2.spines['left'].set_visible(False)
+    ax2.spines['bottom'].set_visible(False)
+    
+    # --- Adicionar Rótulos de Dados (Percentuais) ---
+    print("Adicionando rótulos ao Gráfico 2...")
+    # Formata como 'X.Y%' e só mostra se for > 1% (evita poluição visual)
+    fmt_func = lambda v: f'{v:.1f}%' if v > 1 else ''
+
+    for container in ax2.containers:
+        ax2.bar_label(
+            container,
+            fmt=fmt_func,
+            label_type='center',
+            fontsize=8,
+            color='white', # Cor 'white' para contraste em cores escuras
+            weight='bold'
+        )
+
+    plt.tight_layout()
+
+def main():
+    """
+    Função principal (orquestradora) do script.
+
+    Define as constantes, configura o ambiente, carrega os dados e
+    chama as funções de plotagem. Por fim, exibe todos os gráficos.
+    """
+    # --- Configurações Iniciais ---
+    URL_DADOS = 'https://github.com/alura-cursos/dataviz-graficos/raw/refs/heads/master/dados/relatorio_vendas.csv'
+    ARQUIVO_LOCAL = 'relatorio_temp.csv'
+    
+    configurar_locale()
+    
+    # --- Carga de Dados ---
+    if not baixar_dados(URL_DADOS, ARQUIVO_LOCAL):
+        print("Não foi possível obter os dados. Encerrando o script.")
+        return
+
+    df = carregar_dados(ARQUIVO_LOCAL)
+    
+    if df is None:
+        print("Não foi possível carregar o DataFrame. Encerrando o script.")
+        return
+
+    # --- Geração das Análises ---
+    plotar_vendas_centro_oeste(df)
+    plotar_modos_envio_departamento(df)
+    
+    print("\nProcessamento concluído.")
+    
+    # Exibe todos os gráficos criados de uma vez.
+    print("Exibindo todos os gráficos gerados...")
+    plt.show()
+
+# --- Ponto de Entrada do Script ---
+if __name__ == "__main__":
+    main()
