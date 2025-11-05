@@ -1,0 +1,274 @@
+import pandas as pd
+import plotly.express as px
+import locale 
+import logging
+import os
+import webbrowser
+import time
+
+# --- 1. Configuração do Logging ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+logging.info("Script iniciado. (Seleção por número, Gráficos com Plotly)")
+
+# --- 2. Função para Limpar Tela ---
+def limpar_tela():
+    """Limpa o terminal (funciona em Windows, Linux e macOS)."""
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+# --- Funções Principais ---
+
+def configurar_locale():
+    """Configura o locale para pt_BR para formatação de moeda."""
+    try:
+        locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+    except locale.Error:
+        try:
+            locale.setlocale(locale.LC_ALL, 'Portuguese_Brazil.1252')
+        except locale.Error:
+            logging.warning("Locale 'pt_BR.UTF-8' ou 'Portuguese_Brazil.1252' não encontrado. Usando o locale padrão.")
+            locale.setlocale(locale.LC_ALL, '')
+
+def carregar_dados(url):
+    """
+    Carrega e limpa os dados do CSV da URL.
+    Espera colunas como 'data_pedido', 'estado', 'vendas', etc.
+    """
+    try:
+        logging.info(f"Baixando e carregando dados de {url}...")
+        
+        df = pd.read_csv(url) 
+        
+        logging.info("Dados carregados. Iniciando limpeza...")
+
+        df['data_pedido'] = pd.to_datetime(df['data_pedido'], format='%Y-%m-%d')
+        df['estado'] = df['estado'].str.strip()
+        
+        logging.info("Dados carregados e limpos com sucesso.")
+        return df
+        
+    except pd.errors.ParserError as e:
+        logging.error(f"Erro do Pandas ao processar o arquivo: {e}")
+        return None
+    except KeyError as e:
+        logging.error(f"Erro: A coluna {e} não foi encontrada no CSV. Verifique a URL_DADOS.")
+        return None
+    except Exception as e:
+        logging.error(f"Um erro inesperado ocorreu ao carregar/limpar os dados: {e}")
+        return None
+
+def executar_analise_semestral(df, nomes_estados_lista):
+    """
+    Analisa as vendas semestrais para um ou mais estados selecionados
+    e gera um gráfico de linha interativo.
+    Retorna o nome do arquivo HTML temporário em caso de sucesso, ou None.
+    """
+    nomes_str = ", ".join(nomes_estados_lista)
+    logging.info(f"--- Iniciando análise de vendas semestrais para: {nomes_str} ---")
+    
+    df_estados = df[df['estado'].isin(nomes_estados_lista)].copy()
+    
+    if df_estados.empty:
+        logging.warning(f"Nenhum dado encontrado para os estados: {nomes_str}.")
+        return None
+
+    vendas_semestrais = (
+        df_estados.groupby(['estado', pd.Grouper(key='data_pedido', freq='2Q')])['vendas']
+        .sum()
+        .reset_index()
+    )
+    
+    vendas_semestrais['Semestre'] = (
+        vendas_semestrais['data_pedido'].dt.year.astype(str) + 
+        '-S' + 
+        ((vendas_semestrais['data_pedido'].dt.month - 1) // 6 + 1).astype(str)
+    )
+
+    if vendas_semestrais.empty:
+        logging.warning("Nenhum dado de venda encontrado para este estado nos períodos.")
+        return None
+        
+    logging.info("Análise concluída. Gerando gráfico...")
+
+    fig = px.line(
+        vendas_semestrais, 
+        x='Semestre', 
+        y='vendas',
+        color='estado',    
+        markers=True,      
+        title=f'Vendas Semestrais Comparativas'
+    )
+
+    # Remove o título e os rótulos do eixo Y
+    fig.update_yaxes(
+        title_text=None,        
+        showticklabels=False    
+    )
+    
+    # --- CORREÇÃO DE FORMATO ---
+    # Adiciona 'separators' para forçar o formato pt_BR (ponto-milhar, vírgula-decimal)
+    # Isso corrige o formato da moeda no hover.
+    fig.update_layout(
+        yaxis_tickprefix='R$ ', 
+        yaxis_tickformat=',.2f',
+        separators=".,"  # <-- Esta é a correção
+    )
+    
+    fig.update_layout(
+        xaxis_title='Semestre',
+        legend_title='Estado'
+    )
+
+    try:
+        filename = "temp_analise_vendas_semestrais.html"
+        fig.write_html(filename)
+        logging.info(f"Gráfico de análise semestral salvo temporariamente em {filename}")
+        return filename
+    except Exception as e:
+        logging.error(f"Erro ao salvar o gráfico HTML (semestral): {e}")
+        return None
+
+def executar_analise_anual_nordeste(df):
+    """
+    Analisa e compara o lucro anual dos estados da região Nordeste 
+    e gera um gráfico de linha interativo.
+    Retorna o nome do arquivo HTML temporário em caso de sucesso, ou None.
+    """
+    logging.info("--- Iniciando análise de lucro anual (Região Nordeste) ---")
+    
+    df_nordeste = df[df['regiao'] == 'Nordeste'].copy()
+    
+    if df_nordeste.empty:
+        logging.warning("Nenhum dado encontrado para a região 'Nordeste'.")
+        return None
+        
+    df_nordeste['Ano'] = df_nordeste['data_pedido'].dt.year
+    lucro_anual_ne = df_nordeste.groupby(['Ano', 'estado'])['lucro'].sum().reset_index()
+
+    fig = px.line(lucro_anual_ne, 
+                  x='Ano', 
+                  y='lucro',
+                  color='estado', 
+                  title='Comparação do Lucro Anual por Estado do Nordeste',
+                  markers=True,
+                  labels={'lucro': 'Lucro Total (R$)', 'Ano': 'Ano'})
+    
+    # --- CORREÇÃO DE FORMATO ---
+    # Adiciona 'separators' para forçar o formato pt_BR
+    # Isso corrige o formato da moeda no eixo Y e no hover.
+    fig.update_layout(
+        yaxis_tickprefix='R$ ', 
+        yaxis_tickformat=',.2f',
+        separators=".,"  # <-- Esta é a correção
+    )
+    
+    fig.update_xaxes(type='category') 
+    fig.update_layout(yaxis_title='Lucro Total (R$)', xaxis_title='Ano', legend_title='Estado')
+
+    logging.info("Análise de lucro concluída. Gerando gráfico...")
+    
+    try:
+        filename = "temp_analise_lucro_nordeste.html"
+        fig.write_html(filename)
+        logging.info(f"Gráfico de lucro anual salvo temporariamente em {filename}")
+        return filename
+    except Exception as e:
+        logging.error(f"Erro ao salvar o gráfico HTML (lucro): {e}")
+        return None
+
+def main():
+    """
+    Função principal (orquestradora) do script.
+    """
+    limpar_tela() 
+    logging.info("Iniciando script de análise de vendas.")
+    
+    URL_DADOS = 'https://raw.githubusercontent.com/alura-cursos/dataviz-graficos/master/dados/relatorio_vendas.csv'
+    
+    configurar_locale()
+    
+    df = carregar_dados(URL_DADOS)
+    
+    if df is None:
+        logging.error("Não foi possível carregar o DataFrame. Encerrando o script.")
+        return
+
+    print("\n--- Estados Disponíveis para Consulta ---")
+    
+    estados_disponiveis = [] 
+    try:
+        estados_disponiveis = sorted(df['estado'].unique())
+        for i, nome_estado in enumerate(estados_disponiveis, start=1):
+            print(f" {i:2}. {nome_estado}") 
+            
+    except Exception as e:
+        logging.error(f"Ocorreu um erro ao listar os estados: {e}")
+    print("------------------------------------------")
+    
+    estado_input = input("Para a análise de vendas semestrais, digite os NÚMEROS dos estados, separados por vírgula (ex: 1, 5, 7): ")
+    
+    arquivo_grafico_1 = None
+    arquivo_grafico_2 = None
+    
+    if not estado_input:
+        logging.warning("Nenhum estado fornecido. Pulando a análise de vendas semestrais.")
+    else:
+        numeros_str_list = estado_input.split(',')
+        nomes_oficiais = []
+        valido = True
+        
+        try:
+            for num_str in numeros_str_list:
+                num_str = num_str.strip() 
+                if not num_str: continue 
+
+                numero_escolhido = int(num_str)
+                
+                if 1 <= numero_escolhido <= len(estados_disponiveis):
+                    nomes_oficiais.append(estados_disponiveis[numero_escolhido - 1])
+                else:
+                    logging.warning(f"Número '{numero_escolhido}' está fora da faixa (1-{len(estados_disponiveis)}). Abortando análise semestral.")
+                    valido = False
+                    break 
+        
+        except ValueError:
+            logging.warning(f"Entrada '{estado_input}' contém itens que não são números. Por favor, digite apenas números separados por vírgula.")
+            valido = False
+        
+        if valido and nomes_oficiais:
+            limpar_tela()
+            arquivo_grafico_1 = executar_analise_semestral(df, nomes_oficiais)
+        elif valido and not nomes_oficiais:
+            logging.warning("Nenhum número válido foi inserido. Pulando a análise semestral.")
+
+    arquivo_grafico_2 = executar_analise_anual_nordeste(df)
+    
+    arquivos_para_abrir = [f for f in [arquivo_grafico_1, arquivo_grafico_2] if f]
+        
+    if not arquivos_para_abrir:
+        logging.warning("Nenhum gráfico foi gerado.")
+    else:
+        logging.info("Abrindo gráficos gerados no navegador...")
+        try:
+            for f in arquivos_para_abrir:
+                webbrowser.open_new_tab(f"file://{os.path.abspath(f)}")
+            
+            time.sleep(1) 
+            
+        finally:
+            logging.info("Limpando arquivos temporários dos gráficos...")
+            for f in arquivos_para_abrir:
+                try:
+                    os.remove(f)
+                except OSError as e:
+                    logging.warning(f"Não foi possível remover o arquivo temporário {f}: {e}")
+    
+    logging.info("Script concluído.")
+
+# --- Ponto de Entrada do Script ---
+if __name__ == "__main__":
+    main()
