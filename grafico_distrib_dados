@@ -1,0 +1,210 @@
+# ----------------------------------------------------------------------
+# Importação de Bibliotecas
+# ----------------------------------------------------------------------
+import matplotlib.pyplot as plt # Para a criação e manipulação dos gráficos (plots)
+import seaborn as sns           # Para visualizações estatísticas avançadas (baseado no Matplotlib)
+import pandas as pd             # Para manipulação e análise de dados (DataFrames)
+import os                       # Para interagir com o sistema operacional (verificar se arquivo existe)
+import requests                 # Para fazer requisições HTTP (baixar os arquivos CSV)
+
+# ----------------------------------------------------------------------
+# Configurações Globais e Constantes
+# ----------------------------------------------------------------------
+
+# Define o tema padrão do Seaborn para um visual mais limpo e moderno
+sns.set_theme(style="whitegrid")
+
+# Dicionário para gerenciar as fontes de dados (facilita a manutenção)
+FONTES_DADOS = {
+    'idade': {
+        'url': "https://cdn3.gnarususercontent.com.br/3057-data-visualization/Atividades/Aula+04/pop_idade.csv",
+        'arquivo_local': 'pop_idade.csv',
+        'dataframe': None # Será preenchido após a carga
+    },
+    'volume': {
+        'url': "https://raw.githubusercontent.com/alura-cursos/dataviz-graficos/refs/heads/master/dados/volume_amaciante.csv",
+        'arquivo_local': 'volume_amaciante.csv',
+        'dataframe': None # Será preenchido após a carga
+    }
+}
+
+# ----------------------------------------------------------------------
+# Bloco de Carga e Cache de Dados
+# ----------------------------------------------------------------------
+print("--- Iniciando verificação e carga de dados ---")
+
+# Itera sobre as fontes de dados definidas no dicionário
+for chave, info in FONTES_DADOS.items():
+    arquivo_local = info['arquivo_local']
+    url = info['url']
+    
+    try:
+        # Lógica de Cache: Só baixa o arquivo se ele não existir localmente
+        if not os.path.exists(arquivo_local):
+            print(f"Baixando '{arquivo_local}'...")
+            # Faz a requisição GET
+            r = requests.get(url)
+            # Levanta um erro caso a requisição falhe (ex: 404, 500)
+            r.raise_for_status()
+            # Salva o conteúdo em um arquivo binário
+            with open(arquivo_local, 'wb') as f:
+                f.write(r.content)
+            print(f"Download de '{arquivo_local}' concluído.")
+        else:
+            print(f"Arquivo '{arquivo_local}' já existe. Lendo do disco.")
+        
+        # Se o arquivo existe (baixado ou local), tenta ler com o Pandas
+        FONTES_DADOS[chave]['dataframe'] = pd.read_csv(arquivo_local)
+        print(f"Sucesso ao carregar '{arquivo_local}' em um DataFrame.")
+    
+    except requests.exceptions.RequestException as e:
+        # Erro de rede (DNS, conexão, 404, etc)
+        print(f"Erro de REDE ao processar '{arquivo_local}': {e}")
+    except pd.errors.EmptyDataError:
+        # Erro comum se o arquivo baixado estiver vazio
+        print(f"Erro de DADOS: O arquivo '{arquivo_local}' está vazio ou corrompido.")
+    except Exception as e:
+        # Captura outros erros inesperados (ex: permissão de escrita)
+        print(f"Erro inesperado ao processar '{arquivo_local}': {e}")
+
+print("\n--- Processamento de Gráficos ---")
+
+# ----------------------------------------------------------------------
+# Gráfico 1: Análise da População de Alegrete (Idade)
+# ----------------------------------------------------------------------
+
+# Armazena o DataFrame carregado em uma variável local para facilitar o uso
+df_idade = FONTES_DADOS['idade']['dataframe']
+
+# Só executa o bloco de plotagem se o DataFrame foi carregado com sucesso
+if df_idade is not None:
+    try:
+        # Pega o nome da primeira coluna dinamicamente
+        coluna_idade = df_idade.columns[0]
+        print(f"Plotando Gráfico 1 (Idade) usando coluna: '{coluna_idade}'")
+        
+        # Cria a "Figura" (fig1) e os "Eixos" (axs1)
+        # 1 linha, 2 colunas de subplots, com tamanho total de 14x6 polegadas
+        fig1, axs1 = plt.subplots(1, 2, figsize=(14, 6))
+        
+        # Define um título principal para a figura inteira
+        # x=0.01 e ha='left' alinham o título à esquerda
+        fig1.suptitle("Análise 1: População de Alegrete", x=0.01, ha='left', fontsize=16, y=1.02)
+
+        # --- Subplot 1.1: Histograma e Densidade ---
+        ax = axs1[0] # Seleciona o primeiro eixo (da esquerda)
+        sns.histplot(data=df_idade, x=coluna_idade, kde=True, ax=ax)
+        ax.set_title('Histograma e Densidade', loc='left')
+        ax.set_xlabel('Idade')
+        ax.set_ylabel('Frequência')
+
+        # Bloco de cálculo e plotagem das estatísticas descritivas
+        mediana_idade = df_idade[coluna_idade].median()
+        media_idade = df_idade[coluna_idade].mean()
+        q1_idade = df_idade[coluna_idade].quantile(0.25)
+        q3_idade = df_idade[coluna_idade].quantile(0.75)
+
+        # Adiciona as linhas verticais (axvline) para cada estatística
+        ax.axvline(mediana_idade, color='r', linestyle='--', label=f'Mediana: {mediana_idade:.2f}')
+        ax.axvline(media_idade, color='g', linestyle='--', label=f'Média: {media_idade:.2f}')
+        ax.axvline(q1_idade, color='b', linestyle=':', label=f'Q1 (25%): {q1_idade:.2f}')
+        ax.axvline(q3_idade, color='b', linestyle=':', label=f'Q3 (75%): {q3_idade:.2f}')
+        
+        # Adiciona a legenda com fonte pequena para não sobrepor
+        ax.legend(fontsize='small') 
+        
+        # Limpeza estética: remove as bordas (spines) de cima, direita e esquerda
+        for spine in ['top', 'right', 'left']:
+            ax.spines[spine].set_visible(False)
+        # Remove os "ticks" (marcas) do eixo Y
+        ax.tick_params(left=False)
+
+        # --- Subplot 1.2: Boxplot Vertical ---
+        ax = axs1[1] # Seleciona o segundo eixo (da direita)
+        sns.boxplot(data=df_idade, y=coluna_idade, ax=ax)
+        ax.set_title('Boxplot da Distribuição', loc='left')
+        ax.set_ylabel('Idade')
+        ax.set_xlabel('') # Remove o label do eixo X pois não tem valor
+        
+        # Limpeza estética: remove as bordas de cima, direita e inferior
+        for spine in ['top', 'right', 'bottom']:
+            ax.spines[spine].set_visible(False)
+        # Remove os ticks do eixo X e os labels (xticks)
+        ax.tick_params(bottom=False)
+        ax.set_xticks([])
+
+        # Ajusta o layout para evitar sobreposição de títulos/labels
+        plt.tight_layout()
+        # Exibe o gráfico na tela (navegador, viewer do VSCode, etc.)
+        plt.show()
+        
+    except Exception as e:
+        print(f"Erro ao gerar gráfico de idade: {e}")
+else:
+    print("Não foi possível gerar o gráfico de idade pois os dados não foram carregados.")
+
+# ----------------------------------------------------------------------
+# Gráfico 2: Análise do Volume de Amaciante
+# ----------------------------------------------------------------------
+
+# Armazena o DataFrame carregado
+df_volume = FONTES_DADOS['volume']['dataframe']
+
+# Só executa se o DataFrame foi carregado
+if df_volume is not None:
+    try:
+        coluna_volume = df_volume.columns[0]
+        print(f"\nPlotando Gráfico 2 (Volume) usando coluna: '{coluna_volume}'")
+        
+        # Cria a segunda Figura e seus Eixos
+        fig2, axs2 = plt.subplots(1, 2, figsize=(14, 6))
+        fig2.suptitle("Análise 2: Volume de Amaciante", x=0.01, ha='left', fontsize=16, y=1.02)
+
+        # --- Subplot 2.1: Histograma e Densidade ---
+        ax = axs2[0] # Eixo da esquerda
+        sns.histplot(data=df_volume, x=coluna_volume, kde=True, ax=ax)
+        ax.set_title('Histograma e Densidade', loc='left')
+        ax.set_xlabel('Volume (ml)')
+        ax.set_ylabel('Frequência')
+
+        # Cálculo e plotagem das estatísticas
+        mediana_volume = df_volume[coluna_volume].median()
+        media_volume = df_volume[coluna_volume].mean()
+        q1_volume = df_volume[coluna_volume].quantile(0.25)
+        q3_volume = df_volume[coluna_volume].quantile(0.75)
+
+        ax.axvline(mediana_volume, color='r', linestyle='--', label=f'Mediana: {mediana_volume:.2f}')
+        ax.axvline(media_volume, color='g', linestyle='--', label=f'Média: {media_volume:.2f}')
+        ax.axvline(q1_volume, color='b', linestyle=':', label=f'Q1 (25%): {q1_volume:.2f}')
+        ax.axvline(q3_volume, color='b', linestyle=':', label=f'Q3 (75%): {q3_volume:.2f}')
+        ax.legend(fontsize='small')
+
+        # Limpeza estética
+        for spine in ['top', 'right', 'left']:
+            ax.spines[spine].set_visible(False)
+        ax.tick_params(left=False)
+
+        # --- Subplot 2.2: Boxplot Vertical ---
+        ax = axs2[1] # Eixo da direita
+        sns.boxplot(data=df_volume, y=coluna_volume, ax=ax)
+        ax.set_title('Boxplot da Distribuição', loc='left')
+        ax.set_ylabel('Volume (ml)')
+        ax.set_xlabel('')
+        
+        # Limpeza estética
+        for spine in ['top', 'right', 'bottom']:
+            ax.spines[spine].set_visible(False)
+        ax.tick_params(bottom=False)
+        ax.set_xticks([])
+        
+        # O zoom (set_xlim/set_ylim) foi removido para mostrar a distribuição completa
+
+        plt.tight_layout()
+        plt.show()
+        
+    except Exception as e:
+        print(f"Erro ao gerar gráfico de volume: {e}")
+else:
+    print("Não foi possível gerar o gráfico de volume pois os dados não foram carregados.")
+
+print("\nProcesso finalizado.")
