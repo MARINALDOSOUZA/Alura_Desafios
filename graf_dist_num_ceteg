@@ -1,0 +1,141 @@
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+import os
+import requests 
+
+# Configuração visual
+sns.set_theme(style="whitegrid")
+
+# --- Constantes de Regra de Negócio (Melhoria B) ---
+# Centralizamos os valores aqui. Se a regra mudar, altera-se apenas aqui.
+SABAO_COMPRIMENTO_BASE = 20.0  # cm
+SABAO_LARGURA_BASE = 5.0       # cm
+TOLERANCIA_PCT = 0.02          # 2% de tolerância
+
+# --- Configurações de Arquivos ---
+URL_NOTAS = "https://cdn3.gnarususercontent.com.br/3057-data-visualization/Atividades/Aula%2005/notas.csv"
+ARQUIVO_LOCAL_NOTAS = 'notas.csv'
+
+URL_SABAO = "https://raw.githubusercontent.com/alura-cursos/dataviz-graficos/refs/heads/master/dados/medidas_sabao_em_po.csv"
+ARQUIVO_LOCAL_SABAO = 'medidas_sabao_em_po.csv'
+
+# --- Função de Carga Blindada ---
+# (Melhoria A: Adicionado Type Hinting -> str, str -> pd.DataFrame | None)
+def carregar_dados_seguro(url: str, arquivo_local: str) -> pd.DataFrame | None:
+    # 1. Download se necessário
+    if not os.path.exists(arquivo_local):
+        print(f"-> Baixando {arquivo_local}...")
+        try:
+            r = requests.get(url)
+            r.raise_for_status()
+            with open(arquivo_local, 'wb') as f:
+                f.write(r.content)
+        except Exception as e:
+            print(f"CRÍTICO: Erro no download: {e}")
+            return None
+            
+    # 2. Leitura e Padronização
+    try:
+        df = pd.read_csv(arquivo_local)
+        # Padroniza nomes das colunas para minúsculo
+        df.columns = df.columns.str.lower()
+        # Remove espaços em branco dos nomes das colunas
+        df.columns = df.columns.str.strip()
+        return df
+    except Exception as e:
+        print(f"CRÍTICO: Erro ao ler CSV: {e}")
+        return None
+
+# --- Desafio 1 ---
+def desafio_notas():
+    print("\n--- [Desafio 1] Violin Plot das Notas ---")
+    df = carregar_dados_seguro(URL_NOTAS, ARQUIVO_LOCAL_NOTAS)
+    if df is None: return
+
+    if 'grupo' in df.columns: df = df.rename(columns={'grupo': 'turma'})
+    
+    colunas_ok = 'turma' in df.columns and 'nota' in df.columns
+    if not colunas_ok:
+        print(f"ERRO: Colunas esperadas não encontradas. Tem: {df.columns.tolist()}")
+        return
+
+    print(f"Check de Dados: Foram lidas {len(df)} notas.")
+    print(f"Turmas encontradas: {df['turma'].unique()}")
+    
+    plt.figure(figsize=(10, 6))
+    sns.violinplot(data=df, x='turma', y='nota', palette='Set2', inner="quartile")
+    plt.title("Distribuição de Notas por Turma (com Quartis)", fontsize=16, loc='left')
+    plt.xlabel("Turma")
+    plt.ylabel("Nota")
+    
+    plt.text(x=len(df['turma'].unique()) - 0.5, y=df['nota'].mean(), 
+             s="As linhas internas mostram\nos quartis (25%, 50%, 75%)", 
+             bbox=dict(boxstyle="round", fc="#fff", ec="gray", alpha=0.9), fontsize=9)
+
+    plt.tight_layout()
+    plt.show()
+
+# --- Desafio 2 ---
+def desafio_sabao():
+    print("\n--- [Desafio 2] Controle de Qualidade (Amostra B) ---")
+    df = carregar_dados_seguro(URL_SABAO, ARQUIVO_LOCAL_SABAO)
+    if df is None: return
+
+    amostra_b = df[df['amostra'] == 'B']
+    
+    qtd = len(amostra_b)
+    print(f"Check de Dados: Analisando {qtd} itens da Amostra B.")
+    if qtd == 0:
+        print("ERRO: Nenhum dado encontrado para Amostra B.")
+        return
+
+    # Cálculo Matemático usando as Constantes Globais
+    c_base = SABAO_COMPRIMENTO_BASE
+    c_min = c_base  # Exemplo: Mínimo é a base
+    c_max = c_base * (1 + TOLERANCIA_PCT) # Base + Tolerância
+    
+    l_base = SABAO_LARGURA_BASE
+    l_min = l_base
+    l_max = l_base * (1 + TOLERANCIA_PCT)
+
+    print(f"Limites Calculados (Tol: {TOLERANCIA_PCT*100}%):")
+    print(f" -> Comp: {c_min}-{c_max:.2f}cm | Larg: {l_min}-{l_max:.2f}cm")
+
+    plt.figure(figsize=(10, 6))
+    
+    # Scatterplot
+    sns.scatterplot(data=amostra_b, x='comprimento', y='largura', color='royalblue', alpha=0.6, label='Amostra B')
+
+    # Linhas de Limite
+    plt.axvline(c_min, color='red', linestyle='--', alpha=0.8)
+    plt.axvline(c_max, color='red', linestyle='--', alpha=0.8, label=f'Limite Comp ({c_max:.2f}cm)')
+    
+    plt.axhline(l_min, color='orange', linestyle='--', alpha=0.8)
+    plt.axhline(l_max, color='orange', linestyle='--', alpha=0.8, label=f'Limite Larg ({l_max:.2f}cm)')
+
+    # Área Segura
+    plt.fill_betweenx([l_min, l_max], c_min, c_max, color='green', alpha=0.1, label='Área Aceitável')
+
+    plt.title("Dispersão: Comprimento x Largura (Amostra B)", fontsize=16, loc='left')
+    
+    # Legenda posicionada fora para não cobrir dados
+    plt.legend(loc='upper right', bbox_to_anchor=(1.25, 1))
+    
+    plt.tight_layout()
+    plt.show()
+
+# --- Menu ---
+def main():
+    while True:
+        print("\n" + "="*30)
+        print(" 1. Ver Notas (Violin Plot)")
+        print(" 2. Ver Sabão (Scatter + QC)")
+        print(" 0. Sair")
+        opt = input(" > ")
+        if opt == '1': desafio_notas()
+        elif opt == '2': desafio_sabao()
+        elif opt == '0': break
+
+if __name__ == "__main__":
+    main()
