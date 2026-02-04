@@ -1,0 +1,77 @@
+import os
+
+def limpar_tela():
+    """Limpa o terminal (compatível com Windows e Linux/Mac)."""
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def registrar_vendas(estoque):
+    """
+    Loop interativo para registro de vendas.
+    Atualiza o dicionário 'estoque' diretamente.
+    """
+    print("\n--- CONTROLE DE VENDAS ---")
+    
+    while True:
+        # Exibe opções
+        print(f"\nItens disponíveis: {', '.join(estoque.keys())}")
+        
+        escolha = input("Item vendido: ").strip().lower()
+
+        if escolha in estoque:
+            try:
+                qtd = int(input(f"Quantidade de {escolha}: "))
+                if qtd < 0:
+                    print("A quantidade não pode ser negativa.")
+                else:
+                    estoque[escolha] += qtd
+                    print(f"-> Adicionado: {qtd} {escolha}(s).")
+            except ValueError:
+                print("Erro: Digite apenas números inteiros.")
+        else:
+            print("Item não encontrado no estoque.")
+
+        if input("\nRegistrar outro item? (s/n): ").strip().lower() != 's':
+            break
+
+def gerar_relatorio(estoque):
+    """
+    Analisa os dados, calcula ranking e exibe o relatório final.
+    Trata casos de empate e ausência de vendas.
+    """
+    limpar_tela()
+    print("--- RELATÓRIO FINAL ---")
+    
+    total_geral = sum(estoque.values())
+    max_vendas = max(estoque.values()) if estoque else 0
+
+    # 1. Validação de Vendas Zeradas
+    if max_vendas == 0:
+        print("\nNenhuma venda foi registrada.")
+    else:
+        # 2. Lógica do 1º Lugar (com tratamento de empates)
+        # Filtra chaves onde o valor é igual ao máximo
+        campeoes = list(filter(lambda k: estoque[k] == max_vendas, estoque))
+        print(f"\n1º Lugar: {', '.join(campeoes).capitalize()} ({max_vendas} un.)")
+
+        # 3. Lógica do 2º Lugar
+        # Cria lista de valores únicos ordenados (ex: [10, 8, 5])
+        valores_unicos = sorted(set(estoque.values()), reverse=True)
+        
+        if len(valores_unicos) > 1:
+            vice_valor = valores_unicos[1]
+            
+            # Só exibe se o vice vendeu algo (> 0)
+            if vice_valor > 0:
+                vices = list(filter(lambda k: estoque[k] == vice_valor, estoque))
+                print(f"2º Lugar: {', '.join(vices).capitalize()} ({vice_valor} un.)")
+
+    print(f"\nTotal Acumulado: {total_geral} vendas.")
+
+# --- Bloco Principal de Execução ---
+if __name__ == "__main__":
+    # Configuração inicial
+    frutas = {'maçã': 0, 'banana': 0}
+    
+    # Execução do fluxo
+    registrar_vendas(frutas)
+    gerar_relatorio(frutas)
