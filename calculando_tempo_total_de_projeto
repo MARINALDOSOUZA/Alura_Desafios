@@ -1,0 +1,57 @@
+# lista das atividades/dia
+atividades = {"a": 0, "b": 0, "c": 0}
+
+def receber_dias():
+    print("--- Inserção de Dados ---")
+    for atividade in atividades:
+        while True:
+            entrada = input(f"Digite o número de dias para a atividade '{atividade}': ")
+
+            # 1. Verifica se a entrada é numérica (usando método de string, mas poderia ser try/except)
+            if not entrada.lstrip('-').isdigit(): 
+                print("Erro: Você digitou caracteres não numéricos. Tente novamente.")
+            
+            # Conversão segura agora que sabemos que é "numérico"
+            else:
+                dias = int(entrada)
+
+                # 2. Prioridade IF: Validação de erro crítico (negativo)
+                if dias < 0:
+                    print(f"Erro: O valor {dias} é inválido (não pode ser negativo).")
+                
+                # 3. Prioridade ELIF: Validação de regra de negócio (ex: alerta se for zero)
+                elif dias == 0:
+                    print(f"Aviso: Você inseriu 0 dias para a atividade '{atividade}'.")
+                    atividades[atividade] = dias
+                    break # Sai do loop while e vai para a próxima atividade
+                
+                # 4. Prioridade ELSE: Caso de sucesso (positivo maior que zero)
+                else:
+                    atividades[atividade] = dias
+                    break # Sai do loop while e vai para a próxima atividade
+
+def calcular_total_dias():
+    # Simplificação usando sum() diretamente
+    return sum(atividades.values())
+
+def exibir_total_dias():
+    print("\n--- Relatório Final ---")
+    
+    # Validação extra apenas para formatação (uso de IF/ELSE na saída)
+    if not any(atividades.values()):
+        print("Nenhum dia foi registrado em nenhuma atividade.")
+    else:
+        for atividade, dias in atividades.items():
+            print(f"Atividade {atividade}: {dias} dias")
+        
+        total_dias = calcular_total_dias()
+        print(f"----------------------")
+        print(f"Total geral de dias: {total_dias} dias")
+
+def main():
+    # O main fica muito mais limpo, pois a validação já ocorreu
+    receber_dias()
+    exibir_total_dias()
+
+if __name__ == "__main__":
+    main()
