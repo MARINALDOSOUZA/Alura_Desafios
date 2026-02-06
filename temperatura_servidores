@@ -1,0 +1,32 @@
+import random
+
+# Constantes
+LIMITE_CRITICO = 30
+LIMITE_ALERTA = 25
+
+def monitorar_sistema():
+    # Gerar temperatura
+    temperatura_atual = random.randint(15, 35)
+    print(f"--- Leitura do Sensor: {temperatura_atual}°C ---")
+
+    # 1. Prioridade máxima: Checar erro crítico primeiro
+    if temperatura_atual > LIMITE_CRITICO:
+        print(f"[PERIGO] Temperatura acima de {LIMITE_CRITICO}°C!")
+        acionar_protocolo_emergencia()
+
+    # 2. Caso intermediário: Temperatura alta, mas não crítica
+    elif temperatura_atual >= LIMITE_ALERTA:
+        print(f"[ATENÇÃO] Temperatura em zona de alerta (entre {LIMITE_ALERTA}°C e {LIMITE_CRITICO}°C).")
+        print("-> Ação: Aumentar velocidade das ventoinhas.")
+    
+    # 3. Caso padrão: Tudo normal
+    else:
+        print("[OK] Temperatura estável e segura.")
+
+def acionar_protocolo_emergencia():
+    """Função separada apenas para ações drásticas, mantendo o código limpo"""
+    print("-> AÇÃO: Alarme sonoro ativado!")
+    print("-> AÇÃO: Desligando servidores imediatamente...")
+
+if __name__ == "__main__":
+    monitorar_sistema()
