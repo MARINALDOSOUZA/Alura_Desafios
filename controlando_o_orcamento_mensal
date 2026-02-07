@@ -1,0 +1,88 @@
+import os
+
+# Função utilitária para limpar tela
+def limpa_tela():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+# Função para garantir entrada numérica válida (reutilizável)
+def ler_valor_monetario(mensagem):
+    while True:
+        entrada = input(mensagem)
+        try:
+            # Substitui vírgula por ponto para aceitar formato brasileiro
+            valor = float(entrada.replace(",", "."))
+            return valor
+        except ValueError:
+            print("Erro: Digite um valor numérico válido (ex: 50.00).")
+
+def main():
+    limpa_tela()
+    print("=== Gerenciador de Despesas Inteligente ===")
+    
+    despesas = {}
+    
+    # 1. Definição do Limite (com validação)
+    while True:
+        limite_input = 3000.0 # Valor fixo
+        if limite_input > 0:
+            saldo_atual = limite_input
+            limite_total = limite_input # Guardamos para histórico
+            break
+        print("Erro: O limite deve ser maior que zero.")
+
+    # 2. Loop Principal (Unificado)
+    while True:
+        limpa_tela()
+        print(f"--- Status Atual ---")
+        print(f"Limite Total: R$ {limite_total:.2f}")
+        print(f"Saldo Disponível: R$ {saldo_atual:.2f}")
+        print("--------------------")
+
+        if saldo_atual <= 0:
+            print("Aviso: Seu saldo acabou!")
+            break
+
+        nome = input("Nome da despesa (ou 'S' para sair/finalizar): ").strip()
+        if nome.lower() == 's':
+            break
+        
+        # Se não digitou nome, volta para o inicio do loop
+        if not nome: 
+            continue
+
+        valor = ler_valor_monetario(f"Valor da despesa '{nome}': R$ ")
+
+        # --- Lógica Core (Priorizando IF / ELIF / ELSE) ---
+        
+        # 1. Verifica se tem saldo suficiente
+        if valor > saldo_atual:
+            print(f"\n[BLOQUEADO] A despesa de R$ {valor:.2f} excede o saldo de R$ {saldo_atual:.2f}.")
+            input("Pressione Enter para tentar um valor menor...")
+        
+        # 2. Verifica se o valor é lógico (não negativo/zero)
+        elif valor <= 0:
+            print("\n[ERRO] O valor da despesa deve ser positivo.")
+            input("Pressione Enter para corrigir...")
+
+        # 3. Sucesso: processa a despesa
+        else:
+            despesas[nome] = valor
+            saldo_atual -= valor
+            print(f"\n[SUCESSO] '{nome}' registrada!")
+            input("Pressione Enter para continuar...")
+
+    # 3. Relatório Final
+    limpa_tela()
+    print("=== Relatório de Fechamento ===")
+    if not despesas:
+        print("Nenhuma despesa foi registrada.")
+    else:
+        for item, custo in despesas.items():
+            print(f"- {item.ljust(20)}: R$ {custo:.2f}")
+        
+        print("-" * 30)
+        print(f"Total Gasto:          R$ {limite_total - saldo_atual:.2f}")
+        print(f"Saldo Remanescente:   R$ {saldo_atual:.2f}")
+
+if __name__ == "__main__":
+    main()
