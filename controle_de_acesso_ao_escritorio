@@ -1,0 +1,78 @@
+import random
+from datetime import time
+
+# Configuração dos horários de acesso (Início, Fim)
+# Adicionei 'manutencao' para testar o caso de virada de noite (22h às 05h)
+HORARIOS_ACESSO = {
+    "executivo":      (time(8, 0),  time(18, 0)),
+    "administrativo": (time(9, 0),  time(17, 0)),
+    "segurança":      (time(0, 0),  time(23, 59)),
+    "manutencao":     (time(22, 0), time(5, 0)) 
+}
+
+def gerar_hora_simulada():
+    """Gera um objeto time com hora e minuto aleatórios."""
+    h = random.randint(0, 23)
+    m = random.randint(0, 59)
+    return time(h, m)
+
+def validar_credenciais():
+    """Recebe e valida os dados do usuário."""
+    print("--- Sistema de Controle de Acesso ---")
+    nome = input("Nome do funcionário: ").strip().title()
+    
+    while True:
+        entrada_codigo = input("Código de acesso (4 dígitos): ")
+        # Validação simples para garantir que são números
+        if entrada_codigo.isdigit() and len(entrada_codigo) == 4:
+            return nome, int(entrada_codigo)
+        else:
+            print("Erro: O código deve conter exatamente 4 números.")
+
+def verificar_permissao(setor, hora_atual):
+    """
+    Lógica central com IF/ELIF/ELSE para verificar janelas de tempo.
+    """
+    # 1. Verifica se o setor existe
+    if setor not in HORARIOS_ACESSO:
+        return False, "Setor não encontrado."
+
+    inicio, fim = HORARIOS_ACESSO[setor]
+
+    # 2. Lógica para turnos normais (Início < Fim, ex: 08:00 as 18:00)
+    if inicio < fim:
+        if inicio <= hora_atual <= fim:
+            return True, "Horário Comercial - Acesso Permitido."
+        else:
+            return False, "Fora do Horário Comercial."
+
+    # 3. Lógica para turnos noturnos/madrugada (Início > Fim, ex: 22:00 as 05:00)
+    else: 
+        # O operador 'or' é crucial aqui: ou é tarde da noite, ou é de manhã cedo
+        if hora_atual >= inicio or hora_atual <= fim:
+            return True, "Turno Noturno - Acesso Permitido."
+        else:
+            return False, "Fora do Horário de Turno."
+
+def main():
+    nome, codigo = validar_credenciais()
+    
+    setor_input = input("Informe o setor desejado (Executivo, Administrativo, Segurança, Manutencao): ").lower()
+    
+    # Geramos a hora apenas para a simulação
+    hora_simulada = gerar_hora_simulada()
+    
+    print(f"\n[Simulação] Hora do sistema: {hora_simulada.strftime('%H:%M')}")
+    
+    # Chamada da função de verificação
+    permitido, mensagem = verificar_permissao(setor_input, hora_simulada)
+
+    # Exibição do Resultado Final com IF/ELSE
+    if permitido:
+        print(f"✅ BEM-VINDO(A), {nome}! {mensagem}")
+        
+    else:
+        print(f"🚫 ACESSO NEGADO para {nome}. Motivo: {mensagem}")
+
+if __name__ == "__main__":
+    main()
