@@ -1,0 +1,94 @@
+import os
+
+def limpar_tela():
+    if os.name == 'nt':
+        os.system('cls')
+    else:
+        os.system('clear')
+
+def obter_valor_validado(mensagem, tipo_dado):
+    """
+    Recebe uma mensagem e o tipo de dado ('altura' ou 'peso')
+    para aplicar as regras de validação específicas com if/elif/else.
+    """
+    while True:
+        entrada = input(mensagem)
+        
+        # 1. Tratamento de strings: Aceitar vírgula substituindo por ponto
+        entrada_tratada = entrada.replace(",", ".")
+        
+        # Tenta converter. Se falhar, cai no except.
+        try:
+            valor = float(entrada_tratada)
+            
+            # --- ZONA DE VALIDAÇÃO COM IF/ELIF/ELSE ---
+            
+            # Validação Genérica: Negativos ou Zero
+            if valor <= 0:
+                print("Erro: O valor não pode ser zero ou negativo.")
+            
+            # Validação Específica para ALTURA (Limites Humanos: 0.5m a 2.8m)
+            elif tipo_dado == "altura":
+                if valor < 0.50:
+                    print("Erro: Altura muito baixa (mínimo 0.50m).")
+                elif valor > 2.80:
+                    print("Erro: Altura excede o recorde humano (máximo 2.80m).")
+                else:
+                    return valor # Altura Válida
+            
+            # Validação Específica para PESO (Limites Humanos: 2kg a 600kg)
+            elif tipo_dado == "peso":
+                if valor < 2.0:
+                    print("Erro: Peso muito baixo (mínimo 2.0kg).")
+                elif valor > 600.0:
+                    print("Erro: Peso excede limites biológicos (máximo 600kg).")
+                else:
+                    return valor # Peso Válido
+            
+            # Caso de segurança (se passar um tipo errado na função)
+            else:
+                return valor
+
+        except ValueError:
+            print("Erro de Formato: Digite um número no formato '00.00' (ex: 1.75 ou 80.5).")
+
+def calcular_imc():
+    print("--- Calculadora de IMC ---")
+    
+    # Chamamos a função passando qual tipo de validação queremos
+    altura = obter_valor_validado("Digite a altura (ex: 1.75 ou 1,75): ", "altura")
+    peso = obter_valor_validado("Digite o peso em kg (ex: 70.5): ", "peso")
+    
+    imc = peso / (altura ** 2)
+    
+    # Exibição formatada
+    print(f"\nDados Recebidos -> Altura: {altura:.2f}m | Peso: {peso:.2f}kg")
+    print(f"Resultado IMC: {imc:.2f}")
+
+    # Classificação
+    if imc < 18.5:
+        print("Classificação: Abaixo do peso.")
+    elif imc < 25.0:
+        print("Classificação: Peso Ideal.")
+    elif imc < 30.0:
+        print("Classificação: Sobrepeso.")
+    elif imc < 35.0:
+        print("Classificação: Obesidade Grau I.")
+    elif imc < 40.0:
+        print("Classificação: Obesidade Grau II.")
+    else:
+        print("Classificação: Obesidade Grau III.")
+
+# --- FLUXO PRINCIPAL ---
+if __name__ == "__main__":
+    limpar_tela()
+    while True:
+        calcular_imc()
+        
+        decisao = input("\nPressione [Enter] para nova pesquisa ou [S] para sair: ").lower()
+        
+        if decisao == 's':
+            print("Encerrando...")
+            break
+        else:
+            limpar_tela()
