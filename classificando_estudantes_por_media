@@ -1,0 +1,249 @@
+import os
+
+# --- Configurações Globais ---
+DISCIPLINAS = [
+    "Língua Portuguesa", "Matemática", "Ciências", "Geografia", 
+    "História", "Educação Física", "Arte", "Ensino Religioso"
+]
+SERIES_VALIDAS = ("1", "2", "3", "4")
+TURMAS_VALIDAS = ("A", "B", "C")
+BIMESTRES = ("1º", "2º", "3º", "4º")
+LIMITE_ERROS = 3  # Regra de 3 tentativas
+
+# Banco de dados em memória
+boletim_aluno = {}
+
+# --- CLASSE DE EXCEÇÃO PERSONALIZADA ---
+class MuitasTentativasError(Exception):
+    """Erro disparado quando o usuário excede o limite de tentativas."""
+    pass
+
+# --- Funções Utilitárias ---
+
+def limpar_tela():
+    if os.name == 'nt': os.system('cls')
+    else: os.system('clear')
+
+def checar_tentativas(erros):
+    """Função auxiliar para verificar e avisar sobre erros."""
+    restantes = LIMITE_ERROS - erros
+    if erros >= LIMITE_ERROS:
+        print("\n\n!!! Limite de tentativas excedido (3 erros) !!!")
+        print("Cancelando operação e voltando ao Menu Principal...")
+        input("Pressione Enter para continuar...")
+        # ISSO É O 'BOTÃO DE EJEÇÃO' QUE VOLTA PRO MENU
+        raise MuitasTentativasError() 
+    else:
+        print(f"Entrada inválida. Você tem mais {restantes} tentativa(s).")
+
+def ler_nota_opcional(mensagem):
+    erros = 0
+    while True:
+        entrada = input(mensagem).strip().replace(",", ".")
+        
+        # 1. Se Vazio (Enter) -> Retorna None
+        if entrada == "":
+            return None
+        
+        # 2. Tenta converter
+        try:
+            valor = float(entrada)
+            if 0.0 <= valor <= 10.0:
+                return valor
+            else:
+                erros += 1
+                checar_tentativas(erros) # Verifica se estourou o limite
+        except ValueError:
+            erros += 1
+            checar_tentativas(erros) # Verifica se estourou o limite
+
+def obter_situacao(notas):
+    if None in notas:
+        return "PENDENTE", 0.0
+    
+    media = sum(notas) / len(notas)
+    
+    if media >= 7.0: return "APROVADO", media
+    elif media >= 5.0: return "RECUPERAÇÃO", media
+    else: return "REPROVADO", media
+
+# --- Funções Principais ---
+
+def identificar_aluno():
+    limpar_tela()
+    print("--- Identificação do Aluno ---")
+    nome = input("Nome do aluno: ").strip().title()
+    
+    # Validação da Série com contador de erros
+    erros_serie = 0
+    while True:
+        serie = input(f"Série ({', '.join(SERIES_VALIDAS)}): ").strip()
+        if serie in SERIES_VALIDAS: 
+            break
+        else:
+            erros_serie += 1
+            checar_tentativas(erros_serie)
+
+    # Validação da Turma com contador de erros
+    erros_turma = 0
+    while True:
+        turma_input = input(f"Turma ({', '.join(TURMAS_VALIDAS)}): ").strip().upper()
+        if turma_input in TURMAS_VALIDAS:
+            turma = turma_input
+            break
+        else:
+            erros_turma += 1
+            checar_tentativas(erros_turma)
+            
+    return nome, serie, turma
+
+def registrar_notas():
+    erros_menu = 0
+    while True:
+        limpar_tela()
+        print("--- Painel de Registro de Notas ---")
+        print("\nDisciplinas disponíveis:")
+        
+        for i, materia in enumerate(DISCIPLINAS, 1):
+            if materia in boletim_aluno:
+                notas = boletim_aluno[materia]
+                status = "[PENDENTE]" if None in notas else "[COMPLETO]"
+            else:
+                status = "[VAZIO]"
+            print(f"{i:02d}. {materia.ljust(20)} {status}")
+        
+        print("\n00. Voltar ao Menu Principal")
+        
+        try:
+            entrada = input("\nEscolha o número da disciplina: ").strip()
+            
+            # Validação se é dígito
+            if not entrada.isdigit(): 
+                erros_menu += 1
+                checar_tentativas(erros_menu)
+                continue
+            
+            opcao = int(entrada)
+
+            if opcao == 0: 
+                break
+            
+            elif 1 <= opcao <= len(DISCIPLINAS):
+                erros_menu = 0 # Reseta erros se acertou a escolha
+                nome_disciplina = DISCIPLINAS[opcao - 1]
+                
+                # Carrega notas existentes ou cria vazias
+                notas_atuais = boletim_aluno.get(nome_disciplina, [None, None, None, None])
+                
+                print(f"\nEditando notas de: {nome_disciplina}")
+                print("Dica: Pressione ENTER sem digitar nada para deixar 'Pendente'.")
+                
+                novas_notas = []
+                for i, bimestre in enumerate(BIMESTRES):
+                    valor_antigo = notas_atuais[i]
+                    txt_antigo = str(valor_antigo) if valor_antigo is not None else "Vazio"
+                    
+                    # Aqui dentro já tem o controle de 3 erros do ler_nota
+                    entrada_nota = ler_nota_opcional(f"{bimestre} Bimestre (Atual: {txt_antigo}): ")
+                    novas_notas.append(entrada_nota)
+                
+                boletim_aluno[nome_disciplina] = novas_notas
+                print("Notas atualizadas!")
+                input("Pressione Enter...")
+            
+            else:
+                # Digitou número fora da lista (ex: 99)
+                erros_menu += 1
+                checar_tentativas(erros_menu)
+
+        except ValueError:
+            pass # O controle de erro principal está no checar_tentativas
+
+def exibir_relatorio(nome, serie, turma):
+    limpar_tela()
+    print("="*80)
+    print(f"BOLETIM ESCOLAR OFICIAL")
+    print(f"Aluno: {nome:<30} | Série: {serie} | Turma: {turma}")
+    print("="*80)
+
+    print(f"{'DISCIPLINA':<20} | {'B1':^5} | {'B2':^5} | {'B3':^5} | {'B4':^5} | {'MÉDIA':^5} | {'SITUAÇÃO'}")
+    print("-" * 80)
+
+    soma_medias = 0
+    disciplinas_calculaveis = 0
+
+    for disciplina in DISCIPLINAS:
+        if disciplina in boletim_aluno:
+            notas = boletim_aluno[disciplina]
+            situacao, media = obter_situacao(notas)
+            
+            notas_visuais = []
+            for n in notas:
+                if n is None: notas_visuais.append("-")
+                else: notas_visuais.append(f"{n:.1f}")
+            
+            n1, n2, n3, n4 = notas_visuais
+            
+            if situacao == "PENDENTE":
+                media_str = "-"
+            else:
+                media_str = f"{media:.1f}"
+                soma_medias += media
+                disciplinas_calculaveis += 1
+        else:
+            n1, n2, n3, n4 = "-", "-", "-", "-"
+            media_str = "-"
+            situacao = "NÃO INICIADO"
+
+        print(f"{disciplina:<20} | {n1:^5} | {n2:^5} | {n3:^5} | {n4:^5} | {media_str:^5} | {situacao}")
+
+    print("="*80)
+    if disciplinas_calculaveis > 0:
+        media_geral = soma_medias / disciplinas_calculaveis
+        print(f"MÉDIA GERAL: {media_geral:.2f}")
+    else:
+        print("Média Geral indisponível.")
+    print("="*80)
+    input("\nPressione Enter para voltar...")
+
+def menu_principal():
+    # Estrutura Try/Except global para capturar erros de qualquer lugar
+    try:
+        nome, serie, turma = identificar_aluno()
+    except MuitasTentativasError:
+        # Se errar 3x no nome/série, reinicia o programa
+        return menu_principal()
+
+    while True:
+        try:
+            limpar_tela()
+            print(f"Sistema Escolar - Aluno: {nome} ({serie}{turma})")
+            print("1. Registrar / Editar Notas")
+            print("2. Ver Boletim")
+            print("3. Trocar Aluno")
+            print("4. Sair")
+            
+            op = input("\nOpção: ")
+            
+            if op == '1': 
+                registrar_notas()
+            elif op == '2': 
+                exibir_relatorio(nome, serie, turma)
+            elif op == '3': 
+                boletim_aluno.clear()
+                # Chama recursivamente para reiniciar identificação
+                # Se der erro lá, o except lá de cima (ou dentro dele) captura
+                nome, serie, turma = identificar_aluno()
+            elif op == '4': 
+                break
+            else:
+                print("Opção inválida.")
+        
+        # --- ERROR ---
+        except MuitasTentativasError:
+            # Não faz nada, apenas "captura" o erro para impedir que o programa feche.
+            # Como estamos dentro de um `while True`, o loop reinicia e volta pro menu.
+            pass
+
+if __name__ == "__main__":
+    menu_principal()
