@@ -1,0 +1,81 @@
+import os
+
+def limpar_tela():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def calcular_pedagio(distancia_km):
+    """
+    Centraliza a lógica de decisão com IF/ELIF/ELSE.
+    Regra: R$ 10,00 a cada 100km, teto máximo de R$ 30,00.
+    """
+    valor_base = 0.0
+
+    # 1. Primeira faixa: Até 100km
+    if distancia_km <= 100:
+        valor_base = 10.00
+    
+    # 2. Segunda faixa: Entre 101 e 200km
+    elif distancia_km <= 200:
+        valor_base = 20.00
+    
+    # 3. Terceira faixa ou superior: Acima de 200km (Teto de 300km na regra de preço)
+    # A regra dizia "limite de 300km", o que entende-se que acima disso o preço não sobe mais.
+    else:
+        valor_base = 30.00
+        
+    return valor_base
+
+def main():
+    while True: # Loop Infinito para manter o programa rodando
+        limpar_tela()
+        print("=== Sistema de Cálculo de Viagem ===")
+
+        try:
+            origem = input("Digite a origem: ").strip().title()
+            destino = input("Digite o destino: ").strip().title()
+            
+            # Tratamento de entrada (aceita 100.5 ou 100,5)
+            entrada_dist = input("Digite a distância (km): ").replace(",", ".")
+            distancia = float(entrada_dist)
+
+            # Validação lógica (não existe distância negativa)
+            if distancia <= 0:
+                print("Erro: A distância deve ser maior que zero.")
+                input("Pressione Enter para tentar novamente...")
+                continue # Volta para o início do while
+
+        except ValueError:
+            print("Erro: Digite apenas números para a distância.")
+            input("Pressione Enter para tentar novamente...")
+            continue
+
+        # Processamento
+        valor_pedagio = calcular_pedagio(distancia)
+
+        # Saída de Dados
+        limpar_tela()
+        print("-" * 30)
+        print("     RELATÓRIO DA VIAGEM")
+        print("-" * 30)
+        print(f"Origem:    {origem}")
+        print(f"Destino:   {destino}")
+        print(f"Distância: {distancia:.2f} km")
+        print(f"Pedágio:   R$ {valor_pedagio:.2f}")
+        print("-" * 30)
+
+        # Lógica de Continuidade com IF/ELSE
+        opcao = input("\nPressione [Enter] para nova consulta ou [S] para sair: ").lower()
+        
+        if opcao == 's':
+            print("Encerrando o sistema...")
+            break # Quebra o loop While e encerra o programa
+        else:
+            print("Reiniciando...")
+            # O loop volta automaticamente para o topo
+
+if __name__ == "__main__":
+    main()
+
+
+
+
