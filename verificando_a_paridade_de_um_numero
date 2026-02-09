@@ -1,0 +1,67 @@
+import os
+import random
+
+def limpar_tela():
+    """Limpa o terminal dependendo do sistema operacional."""
+    if os.name == 'nt': # Windows
+        os.system('cls')
+    else: # Linux/Mac
+        os.system('clear')
+
+def jogo_adivinhacao():
+    while True: # Loop Principal do Jogo (Reinício Seguro)
+        limpar_tela()
+        print("=== Jogo de Adivinhação (1 a 50) ===")
+        
+        numero_secreto = random.randint(1, 50)
+        tentativas_restantes = 3
+        vitoria = False
+
+        # Loop das Tentativas
+        while tentativas_restantes > 0:
+            print(f"\nTentativas restantes: {tentativas_restantes}")
+            entrada = input("Digite seu palpite: ")
+
+            # 1. Validação de Entrada com IF/ELSE (Evita erros de digitação)
+            if not entrada.isdigit():
+                print("Erro: Por favor, digite apenas números inteiros.")
+                continue # Pula para o próximo ciclo sem descontar tentativa (opcional)
+            
+            palpite = int(entrada)
+
+            # 2. Validação de Intervalo com IF
+            if palpite < 1 or palpite > 50:
+                print("Aviso: O número deve estar entre 1 e 50.")
+                continue
+
+            # 3. Lógica do Jogo com IF/ELIF/ELSE
+            if palpite == numero_secreto:
+                print(f"\n🎉 PARABÉNS! Você acertou o número {numero_secreto}!")
+                vitoria = True
+                break # Sai do loop de tentativas
+            
+            elif palpite > numero_secreto:
+                print(f"-> O número secreto é MENOR que {palpite}.")
+            
+            else: # palpite < numero_secreto
+                print(f"-> O número secreto é MAIOR que {palpite}.")
+            
+            # Decrementa apenas se o palpite foi válido mas incorreto
+            tentativas_restantes -= 1
+
+        # 4. Checagem de Derrota com IF/ELSE (pós-loop)
+        if not vitoria:
+            print(f"\n💀 GAME OVER! O número era {numero_secreto}.")
+
+        # 5. Decisão de Continuar
+        print("-" * 30)
+        comando = input("Pressione [Enter] para jogar novamente ou [S] para sair: ").lower()
+        
+        if comando == 's':
+            print("Obrigado por jogar!")
+            break # Quebra o loop principal (Encerra o programa)
+        else:
+            print("Reiniciando...")
+
+if __name__ == "__main__":
+    jogo_adivinhacao()
