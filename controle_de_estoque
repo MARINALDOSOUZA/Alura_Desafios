@@ -1,0 +1,179 @@
+import os
+
+# Base de Dados: [Quantidade Atual, Preço Unitário, Quantidade Vendida Geral]
+livros = {
+    "1984": [10, 100.00, 0],
+    "Dom Casmurro": [5, 80.00, 0],
+    "O Pequeno Príncipe": [1, 45.99, 0],
+    "O Hobbit": [0, 180.75, 0],
+    "Orgulho e Preconceito": [4, 120.50, 0]
+}
+
+def limpar_tela():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def buscar_chave_livro(nome_digitado):
+    for titulo_real in livros.keys():
+        if titulo_real.lower() == nome_digitado.lower():
+            return titulo_real
+    return None
+
+# --- FUNÇÃO AUXILIAR DE CPF ---
+def formatar_cpf(cpf_numerico):
+    """Recebe 11122233344 e retorna 111.222.333-44"""
+    return f"{cpf_numerico[:3]}.{cpf_numerico[3:6]}.{cpf_numerico[6:9]}-{cpf_numerico[9:]}"
+
+# --- OPÇÃO 1: ESTOQUE ---
+def verificar_estoque():
+    limpar_tela()
+    print("=" * 60)
+    print(f"{'ESTOQUE ATUAL':^60}")
+    print("=" * 60)
+    print(f"{'LIVRO':<30} | {'QTD':^8} | {'PREÇO':>10}")
+    print("-" * 60)
+    for titulo, dados in livros.items():
+        print(f"{titulo:<30} | {dados[0]:^8} | R$ {dados[1]:>8.2f}")
+    print("-" * 60)
+    input("\nEnter para voltar...")
+
+# --- OPÇÃO 2: ADICIONAR ---
+def adicionar_item():
+    limpar_tela()
+    print("--- 📥 ADICIONAR AO ESTOQUE ---")
+    nome = input("Nome do livro: ").strip()
+    if not nome: return
+
+    chave = buscar_chave_livro(nome)
+    if chave:
+        try:
+            qtd = int(input(f"Adicionar quantas unidades de '{chave}'? "))
+            livros[chave][0] += qtd
+            print("✅ Estoque atualizado!")
+        except ValueError:
+            print("❌ Erro: Digite um número válido.")
+    else:
+        print(f"Novo cadastro: {nome}")
+        try:
+            qtd = int(input("Quantidade inicial: "))
+            preco = float(input("Preço unitário: "))
+            livros[nome] = [qtd, preco, 0]
+            print("✅ Cadastrado com sucesso!")
+        except ValueError:
+            print("❌ Erro nos dados numéricos.")
+    input("\nEnter para continuar...")
+
+# --- OPÇÃO 3: VENDA (COM CPF E RELATÓRIO) ---
+def realizar_venda():
+    limpar_tela()
+    print("--- 🛒 NOVA VENDA ---")
+    
+    # 1. Validação do CPF (Loop até digitar certo)
+    cpf_cliente = ""
+    while True:
+        cpf_input = input("Digite o CPF do cliente (apenas números, 11 dígitos): ").strip()
+        
+        # Verifica se é numérico e tem 11 dígitos
+        if len(cpf_input) == 11 and cpf_input.isdigit():
+            cpf_cliente = formatar_cpf(cpf_input) # Aplica a máscara
+            break
+        else:
+            print("⚠️ CPF inválido! Deve conter exatamente 11 números.")
+
+    # Lista temporária para guardar o que esse cliente comprou agora
+    carrinho_atual = [] 
+    total_compra = 0.0
+
+    while True:
+        limpar_tela()
+        print(f"🛒 CLIENTE: {cpf_cliente}")
+        print("-" * 50)
+        print("Itens no carrinho: " + str(len(carrinho_atual)))
+        print(f"Subtotal: R$ {total_compra:.2f}")
+        print("-" * 50)
+        
+        entrada = input("\nNome do livro (ou 'S' para FECHAR CONTA): ").strip()
+
+        # FECHAR A CONTA E MOSTRAR RELATÓRIO
+        if entrada.lower() == 's':
+            if not carrinho_atual:
+                print("\nNenhum item comprado. Venda cancelada.")
+                input("Enter para sair...")
+                return
+
+            limpar_tela()
+            print("="*50)
+            print(f"{'CUPOM FISCAL':^50}")
+            print("="*50)
+            print(f"CPF CONSUMIDOR: {cpf_cliente}")
+            print("-" * 50)
+            print(f"{'ITEM':<30} | {'VALOR':>10}")
+            
+            for item_nome, item_preco in carrinho_atual:
+                print(f"{item_nome:<30} | R$ {item_preco:>7.2f}")
+            
+            print("-" * 50)
+            print(f"{'TOTAL A PAGAR':<30}   R$ {total_compra:>7.2f}")
+            print("="*50)
+            input("\nPressione Enter para confirmar e voltar ao menu...")
+            break
+
+        # BUSCAR LIVRO
+        chave = buscar_chave_livro(entrada)
+        if chave:
+            dados = livros[chave]
+            # dados[0] é estoque
+            if dados[0] > 0:
+                dados[0] -= 1 # Baixa estoque global
+                dados[2] += 1 # Aumenta estatística global
+                
+                # Adiciona ao carrinho local
+                preco = dados[1]
+                carrinho_atual.append((chave, preco))
+                total_compra += preco
+                
+                print(f"✅ {chave} adicionado!")
+                input("Enter para continuar...")
+            else:
+                print("🚫 Estoque esgotado deste item.")
+                input("Enter para continuar...")
+        else:
+            print("❌ Livro não encontrado.")
+            input("Enter para tentar novamente...")
+
+# --- OPÇÃO 4: SAIR ---
+def relatorio_fechamento():
+    limpar_tela()
+    print("=" * 50)
+    print(f"{'FECHAMENTO DE CAIXA (DIÁRIO)':^50}")
+    print("=" * 50)
+    geral = 0
+    for titulo, dados in livros.items():
+        qtd_vendida_total = dados[2]
+        if qtd_vendida_total > 0:
+            total_livro = qtd_vendida_total * dados[1]
+            print(f"{titulo:<20} | {qtd_vendida_total} un. | R$ {total_livro:.2f}")
+            geral += total_livro
+    print("-" * 50)
+    print(f"TOTAL VENDIDO NO DIA: R$ {geral:.2f}")
+    print("=" * 50)
+
+# --- MENU ---
+def menu():
+    while True:
+        limpar_tela()
+        print("=== 📚 LIVRARIA DO SISTEMA ===")
+        print("1 - Estoque")
+        print("2 - Adicionar Livro")
+        print("3 - Venda (Cupom Fiscal)")
+        print("4 - Sair")
+        
+        op = input("\nOpção: ")
+        if op == '1': verificar_estoque()
+        elif op == '2': adicionar_item()
+        elif op == '3': realizar_venda()
+        elif op == '4': 
+            relatorio_fechamento()
+            break
+
+if __name__ == "__main__":
+    menu()
