@@ -1,0 +1,415 @@
+
+
+import random
+import threading
+import time
+import sys
+
+"""
+JOGO: PEDRA, PAPEL, TESOURA, LAGARTO E SPOCK
+==============================================
+Um jogo interativo com:
+- Modo "Melhor de 3" (primeiro a vencer 2 rodadas)
+- Cronômetro de 30 segundos por escolha
+- 3 níveis de dificuldade (Fácil, Médio, Difícil)
+- IA com capacidade de aprendizado conforme dificuldade
+- Interface amigável com emojis
+
+Autor: Sistema de Desenvolvimento
+Data: 2026
+"""
+
+# ====== CONFIGURAÇÕES DO JOGO ======
+JOGO = {
+    'pedra': {'tesoura', 'lagarto'},      # Pedra vence tesoura e lagarto
+    'papel': {'pedra', 'spock'},          # Papel vence pedra e spock
+    'tesoura': {'papel', 'lagarto'},      # Tesoura vence papel e lagarto
+    'lagarto': {'papel', 'spock'},        # Lagarto vence papel e spock
+    'spock': {'tesoura', 'pedra'}         # Spock vence tesoura e pedra
+}
+
+# Cache reverso: quem vence X
+VENCE_A = {opcao: [chave for chave, vence in JOGO.items() if opcao in vence] 
+           for opcao in JOGO}
+
+DIFICULDADES = {
+    'fácil': 0.0,      # IA escolhe aleatoriamente
+    'médio': 0.5,      # IA tem 50% de chance de vencer
+    'difícil': 0.7     # IA tem 70% de chance de vencer
+}
+
+OPCOES = set(JOGO.keys())  # Set para lookup O(1)
+OPCOES_LIST = list(OPCOES)  # Lista para random.choice()
+
+CONFIG = {
+    'timeout': 30,              # Segundos por tentativa
+    'tentativas_max': 3,        # Tentativas antes de perder
+    'melhor_de': 3,             # Melhor de 3 = primeiro a vencer 2
+}
+
+MENSAGENS = {
+    'timeout': '⏳ Tempo restante: {}s         ',
+    'tempo_esgotado': '❌ Tempo esgotado! Você perdeu!',
+    'invalido': '❌ Opção inválida. Tentativas restantes: {}',
+    'esgotado': '❌ Número de tentativas esgotado!',
+    'encerrado': '👋 Jogo encerrado!',
+    'obrigado': '👋 Obrigado por jogar!',
+    'resultado': '➜ {}',
+    'escolha_pc': '🎯 Computador escolheu: {}',
+    'oculto': '🎮 Computador escolheu: ******',
+    'empatado': '⚠️  Rodada empatada! Não conta para o placar.'
+}
+
+
+
+# ====== CLASSES ======
+class InputComTimeout:
+    """
+    Captura input do usuário com cronômetro decrescente.
+    
+    Funcionalidades:
+    - Cronômetro visível em tempo real (não interfere com digitação)
+    - Executa em thread separada para não bloquear input
+    - Detecta timeout e retorna None se tempo expirar
+    - Suporta múltiplas tentativas
+    
+    Atributos:
+        timeout (int): Segundos disponíveis para responder
+        resposta (str|None): Resposta fornecida pelo usuário
+        tempo_expirado (bool): Flag se tempo foi excedido
+        tempo_restante (int): Segundos restantes (atualizado em tempo real)
+    """
+    
+    def __init__(self, timeout: int = CONFIG['timeout']) -> None:
+        """
+        Inicializa capturador de input com timeout.
+        
+        Args:
+            timeout: Segundos disponíveis (padrão: 30)
+        """
+        self.timeout = timeout
+        self.resposta = None
+        self.tempo_expirado = False
+        self.tempo_restante = timeout
+    
+    def cronometro_thread(self, duracao: int) -> None:
+        """
+        Executa cronômetro em thread separada com contagem decrescente.
+        
+        Args:
+            duracao: Segundos totais para contagem
+        """
+        for segundos in range(duracao, 0, -1):
+            if self.resposta is not None:
+                return  # Para se usuário respondeu
+            
+            self.tempo_restante = segundos
+            print(
+                f"\r{MENSAGENS['timeout'].format(segundos)}", 
+                end="", 
+                flush=True, 
+                file=sys.stderr
+            )
+            time.sleep(1)
+        
+        if self.resposta is None:
+            self.tempo_expirado = True
+            print(f"\r{MENSAGENS['timeout'].format(0)}", file=sys.stderr)
+    
+    def obter_com_cronometro(self, prompt: str) -> str | None:
+        """
+        Obtém input com cronômetro decrescente.
+        
+        Args:
+            prompt: Mensagem a exibir para o usuário
+            
+        Returns:
+            str: Resposta do usuário (minúsculas, sem espaços)
+            None: Se timeout expirar ou erro ocorrer
+        """
+        print(f"\n⏱️  Você tem {self.timeout} segundos para responder!\n")
+        
+        # Inicia thread do cronômetro
+        thread_tempo = threading.Thread(
+            target=self.cronometro_thread, 
+            args=(self.timeout,), 
+            daemon=True
+        )
+        thread_tempo.start()
+        
+        try:
+            self.resposta = input(f"{prompt}\n").strip().lower()
+            thread_tempo.join(timeout=1)
+            
+            if self.tempo_expirado:
+                print(f"\n{MENSAGENS['tempo_esgotado']}")
+                return None
+            
+            return self.resposta if self.resposta else None
+        except (EOFError, KeyboardInterrupt):
+            if self.tempo_expirado:
+                print(f"\n{MENSAGENS['tempo_esgotado']}")
+            return None
+
+
+class JogoPedrasPapelTesoura:
+    """
+    Gerencia o fluxo completo do jogo Pedra, Papel, Tesoura, Lagarto e Spock.
+    
+    Responsabilidades:
+    - Controlar estado do jogo (placar, rodadas)
+    - Lógica de determinação de vencedor
+    - IA com dificuldades configuráveis
+    - Validação de regras
+    
+    Atributos:
+        dificuldade (str): Nível de dificuldade ('fácil', 'médio', 'difícil')
+        pontos_humano (int): Pontos do jogador
+        pontos_computador (int): Pontos do computador
+        rodada_atual (int): Número da rodada atual
+        vitoria_necessaria (int): Pontos necessários para vencer
+    """
+    
+    def __init__(self, dificuldade: str = 'médio') -> None:
+        """
+        Inicializa uma partida de jogo.
+        
+        Args:
+            dificuldade: 'fácil', 'médio' ou 'difícil'
+        """
+        self.dificuldade = dificuldade
+        self.pontos_humano = 0
+        self.pontos_computador = 0
+        self.rodada_atual = 1
+        self.vitoria_necessaria = (CONFIG['melhor_de'] // 2) + 1
+    
+    def determinar_vencedor(self, humano: str, computador: str) -> str:
+        """
+        Determina o vencedor de uma rodada.
+        
+        Args:
+            humano: Escolha do jogador
+            computador: Escolha da IA
+            
+        Returns:
+            'Humano vence' | 'Computador vence' | 'Empate'
+        """
+        if humano == computador:
+            return 'Empate'
+        return 'Humano vence' if computador in JOGO[humano] else 'Computador vence'
+    
+    def escolha_computador(self, humano: str) -> str:
+        """
+        Gera escolha da IA baseada na dificuldade.
+        
+        Estratégia por nível:
+        - Fácil: Escolhe aleatoriamente
+        - Médio: 50% tenta vencer, 50% aleatório
+        - Difícil: 70% tenta vencer, 30% aleatório
+        
+        Args:
+            humano: Escolha do jogador para calcular vitória
+            
+        Returns:
+            Escolha da IA (str)
+        """
+        taxa_vitoria = DIFICULDADES[self.dificuldade]
+        
+        # Se taxa de vitória sorteada favorável, tenta vencer
+        if random.random() < taxa_vitoria:
+            opcoes_vence = VENCE_A.get(humano, [])
+            if opcoes_vence:
+                return random.choice(opcoes_vence)
+        
+        # Caso contrário, escolhe aleatoriamente
+        return random.choice(OPCOES_LIST)
+    
+    def jogar_rodada(self) -> bool:
+        """
+        Executa uma rodada completa do jogo.
+        
+        Fluxo:
+        1. Define quem começa aleatoriamente
+        2. Coleta escolhas (humano e computador)
+        3. Determina vencedor
+        4. Atualiza placar (empatadas não contam)
+        
+        Returns:
+            bool: True se rodada completada, False se cancelada/timeout
+        """
+        print(f"\n{'='*50}")
+        print(f"🎮 RODADA {self.rodada_atual}")
+        print(f"{'='*50}")
+        
+        quem_comeca = 'computador' if random.random() < 0.5 else 'humano'
+        print(f"🎮 {quem_comeca.capitalize()} começa!")
+        
+        # Coleta escolhas em ordem (quem começa primeiro)
+        if quem_comeca == 'computador':
+            computador = random.choice(OPCOES_LIST)
+            print(MENSAGENS['oculto'])
+            humano = obter_escolha_usuario()
+        else:
+            humano = obter_escolha_usuario()
+            computador = self.escolha_computador(humano)
+            print(MENSAGENS['oculto'])
+        
+        if humano is None:
+            return False
+        
+        # Determina e exibe resultado
+        resultado = self.determinar_vencedor(humano, computador)
+        print(MENSAGENS['resultado'].format(resultado))
+        print(MENSAGENS['escolha_pc'].format(computador))
+        
+        # Atualiza placar (empatadas não avançam rodada)
+        if resultado == 'Humano vence':
+            self.pontos_humano += 1
+            self.rodada_atual += 1
+        elif resultado == 'Computador vence':
+            self.pontos_computador += 1
+            self.rodada_atual += 1
+        else:
+            print(MENSAGENS['empatado'])
+        
+        return True
+    
+    def exibir_placar(self) -> None:
+        """Exibe o placar atual."""
+        print(f"\n📊 PLACAR: Humano {self.pontos_humano} x {self.pontos_computador} Computador")
+    
+    def jogo_encerrado(self) -> bool:
+        """
+        Verifica se o jogo atingiu o fim.
+        
+        Returns:
+            True se alguém atingiu pontuação de vitória
+        """
+        return (
+            self.pontos_humano >= self.vitoria_necessaria or 
+            self.pontos_computador >= self.vitoria_necessaria
+        )
+    
+    def exibir_resultado_final(self) -> None:
+        """Exibe resultado final e placar da partida."""
+        print(f"\n{'='*50}")
+        print("🏆 FINAL DO JOGO 🏆")
+        print(f"{'='*50}")
+        
+        if self.pontos_humano > self.pontos_computador:
+            print("🎉 HUMANO VENCEU O JOGO! 🎉")
+        else:
+            print("🤖 COMPUTADOR VENCEU O JOGO! 🤖")
+        
+        print(f"\nPlacar Final: Humano {self.pontos_humano} x {self.pontos_computador} Computador")
+
+
+# ====== FUNÇÕES AUXILIARES ======
+def obter_entrada_validada(prompt: str, opcoes_validas: set | frozenset, 
+                           timeout: int = CONFIG['timeout'], 
+                           tentativas: int = CONFIG['tentativas_max']) -> str | None:
+    """
+    Função genérica para obter entrada validada.
+    
+    Args:
+        prompt: Mensagem a exibir
+        opcoes_validas: Set de opções válidas para lookup rápido
+        timeout: Segundos para responder
+        tentativas: Número de tentativas
+        
+    Returns:
+        Entrada validada ou None
+    """
+    input_handler = InputComTimeout(timeout)
+    
+    while tentativas > 0:
+        entrada = input_handler.obter_com_cronometro(prompt)
+        
+        if entrada is None:
+            return None
+        
+        if entrada in opcoes_validas:
+            return entrada
+        
+        tentativas -= 1
+        if tentativas > 0:
+            print(MENSAGENS['invalido'].format(tentativas))
+        else:
+            print(MENSAGENS['esgotado'])
+    
+    return None
+
+
+def exibir_menu_dificuldade() -> str | None:
+    """
+    Menu para escolher dificuldade.
+    
+    Returns:
+        Dificuldade selecionada ('fácil', 'médio', 'difícil') ou None
+    """
+    print("\n📊 Escolha o nível de dificuldade:")
+    opcoes_dif = {'1': 'fácil', '2': 'médio', '3': 'difícil'}
+    
+    for chave, valor in opcoes_dif.items():
+        print(f"{chave} - {valor.capitalize()}")
+    
+    escolha = obter_entrada_validada(
+        "Digite (1, 2 ou 3):",
+        set(opcoes_dif.keys())
+    )
+    return opcoes_dif.get(escolha) if escolha else None
+
+
+def obter_escolha_usuario() -> str | None:
+    """
+    Obtém escolha do jogador.
+    
+    Returns:
+        Opção válida do jogo ou None
+    """
+    return obter_entrada_validada(
+        "Escolha (pedra, papel, tesoura, lagarto ou spock):",
+        OPCOES
+    )
+
+
+# ====== FUNÇÃO PRINCIPAL ======
+def iniciar_jogo():
+    """Inicia o jogo principal - Melhor de 3."""
+    while True:
+        print("=" * 50)
+        print("🎮 PEDRA, PAPEL, TESOURA, LAGARTO E SPOCK")
+        print("🏆 MELHOR DE 3")
+        print("=" * 50)
+        
+        dificuldade = exibir_menu_dificuldade()
+        if dificuldade is None:
+            print("\n👋 Obrigado por jogar!")
+            return
+        
+        print(f"\n✓ Dificuldade definida: {dificuldade.upper()}\n")
+        
+        jogo = JogoPedrasPapelTesoura(dificuldade)
+        
+        while True:
+            if not jogo.jogar_rodada():
+                print(f"\n{MENSAGENS['encerrado']}")
+                return
+            
+            jogo.exibir_placar()
+            
+            if jogo.jogo_encerrado():
+                break
+        
+        jogo.exibir_resultado_final()
+        
+        # Pergunta se quer jogar novamente
+        print("\n" + "=" * 50)
+        jogar_novamente = input("Deseja jogar novamente? (s/n): ").lower().strip()
+        if jogar_novamente != 's':
+            print(f"\n{MENSAGENS['obrigado']}")
+            return
+
+
+if __name__ == "__main__":
+    iniciar_jogo()
