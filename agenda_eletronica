@@ -1,0 +1,352 @@
+"""
+Sistema de Agenda Eletrônica
+Criado por: marinaldosouza@gmail.com
+
+Este módulo fornece uma interface de linha de comando para o gerenciamento 
+de demandas e tarefas. Ele permite o cadastro, execução, exclusão e 
+visualização de um histórico, incluindo validação rigorosa de datas 
+e proteção contra agendamentos retroativos.
+"""
+
+import os
+import datetime
+import sys
+from typing import List, Tuple, Optional, Callable
+
+
+# ==========================================
+# MÓDULO DE LÓGICA E DADOS (Classe Agenda)
+# ==========================================
+class Agenda:
+    """
+    Gerencia o armazenamento e a lógica de negócios das demandas.
+
+    Atributos:
+        demandas_pendentes (list): Lista de dicionários contendo as demandas ativas.
+        historico_demandas (list): Lista de dicionários contendo as demandas concluídas ou excluídas.
+    """
+
+    def __init__(self) -> None:
+        """Inicializa as listas vazias para controle das demandas."""
+        self.demandas_pendentes: List[dict] = []
+        self.historico_demandas: List[dict] = []
+
+    def adicionar_demanda(self, data: str, hora: str, detalhes: str) -> None:
+        """
+        Adiciona uma nova demanda à lista de pendências.
+
+        Args:
+            data (str): Data estritamente no formato DD/MM/AAAA.
+            hora (str): Hora estritamente no formato HH:MM.
+            detalhes (str): Descrição da tarefa (será formatada em caixa alta e limitada a 200 caracteres).
+        """
+        nova_demanda = {
+            'data_execucao': data,
+            'hora_execucao': hora,
+            'Detalhes_execucao': detalhes.upper()[:200]
+        }
+        self.demandas_pendentes.append(nova_demanda)
+
+    def obter_pendentes_ordenadas(self) -> List[dict]:
+        """
+        Ordena e retorna as demandas pendentes por ordem cronológica.
+
+        Returns:
+            list: Lista de dicionários contendo as demandas ativas ordenadas da mais antiga para a mais recente.
+        """
+        self.demandas_pendentes.sort(
+            key=lambda d: datetime.datetime.strptime(f"{d['data_execucao']} {d['hora_execucao']}", "%d/%m/%Y %H:%M")
+        )
+        return self.demandas_pendentes
+
+    def executar_demanda(self, idx: int) -> bool:
+        """
+        Move uma demanda da lista de pendentes para o histórico com o status EXECUTADA.
+
+        Args:
+            idx (int): Índice (ID) da demanda na lista de pendências.
+
+        Returns:
+            bool: True se a operação foi bem-sucedida, False se o índice for inválido.
+        """
+        if 0 <= idx < len(self.demandas_pendentes):
+            demanda = self.demandas_pendentes.pop(idx)
+            demanda['status'] = 'EXECUTADA'
+            self.historico_demandas.append(demanda)
+            return True
+        return False
+
+    def excluir_demanda(self, idx: int) -> bool:
+        """
+        Move uma demanda da lista de pendentes para o histórico com o status EXCLUÍDA.
+
+        Args:
+            idx (int): Índice (ID) da demanda na lista de pendências.
+
+        Returns:
+            bool: True se a operação foi bem-sucedida, False se o índice for inválido.
+        """
+        if 0 <= idx < len(self.demandas_pendentes):
+            demanda = self.demandas_pendentes.pop(idx)
+            demanda['status'] = 'EXCLUÍDA'
+            self.historico_demandas.append(demanda)
+            return True
+        return False
+
+    def obter_historico(self) -> List[dict]:
+        """
+        Retorna a lista completa de demandas processadas (executadas ou excluídas).
+
+        Returns:
+            list: Lista contendo o histórico.
+        """
+        return self.historico_demandas
+
+
+# ==========================================
+# MÓDULO DE UTILIDADES E VALIDAÇÃO
+# ==========================================
+def limpar_tela() -> None:
+    """Limpa o console do terminal adequando-se ao sistema operacional (Windows ou Unix)."""
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def validar_data(data_str: str) -> bool:
+    """
+    Verifica se a string de data fornecida corresponde a uma data real e formatada corretamente.
+
+    Args:
+        data_str (str): A string da data a ser validada.
+
+    Returns:
+        bool: True se a data for válida (DD/MM/AAAA), False caso contrário.
+    """
+    if len(data_str) != 10: 
+        return False
+    try:
+        datetime.datetime.strptime(data_str, "%d/%m/%Y")
+        return True
+    except ValueError:
+        return False
+
+def validar_hora(hora_str: str) -> bool:
+    """
+    Verifica se a string de hora fornecida corresponde a um horário real.
+
+    Args:
+        hora_str (str): A string da hora a ser validada.
+
+    Returns:
+        bool: True se a hora for válida (HH:MM em 24h), False caso contrário.
+    """
+    if len(hora_str) != 5: 
+        return False
+    try:
+        datetime.datetime.strptime(hora_str, "%H:%M")
+        return True
+    except ValueError:
+        return False
+
+def coletar_input_com_limite(mensagem: str, funcao_validacao: Callable[[str], bool], msg_erro: str) -> Optional[str]:
+    """
+    Coleta o input do usuário e aplica uma função de validação, limitando a 3 tentativas.
+
+    Args:
+        mensagem (str): A mensagem exibida no prompt de input.
+        funcao_validacao (Callable): A função utilizada para validar a entrada.
+        msg_erro (str): A mensagem exibida caso a validação falhe.
+
+    Returns:
+        str ou None: O valor validado caso o usuário acerte, ou None caso opte por abortar após 3 erros.
+    """
+    tentativas = 0
+    while tentativas < 3:
+        valor = input(mensagem).strip()
+        if funcao_validacao(valor):
+            return valor
+        print(f"Erro: {msg_erro}\n")
+        tentativas += 1
+        
+    while True:
+        escolha = input("Você errou 3 vezes. Deseja encerrar o programa? (Sim/S ou Não/N): ").strip().upper()
+        if escolha in ['S', 'SIM']:
+            print("Encerrando o sistema...")
+            sys.exit()
+        elif escolha in ['N', 'NAO', 'NÃO']:
+            return None 
+        else:
+            print("Resposta inválida. Digite S para Sim ou N para Não.")
+
+def coletar_data_hora_futura() -> Tuple[Optional[str], Optional[str]]:
+    """
+    Coleta a data e a hora do usuário, garantindo que o momento informado não seja 
+    retroativo em relação ao relógio atual do sistema.
+
+    Returns:
+        tuple: (data_str, hora_str) válidas, ou (None, None) caso o usuário aborte a operação.
+    """
+    tentativas = 0
+    while tentativas < 3:
+        data = coletar_input_com_limite(
+            "Informe a data de execução (DD/MM/AAAA): ", 
+            validar_data, 
+            "Data inválida! Siga o padrão DD/MM/AAAA."
+        )
+        if not data: return None, None
+        
+        hora = coletar_input_com_limite(
+            "Informe a hora de execução (HH:MM): ", 
+            validar_hora, 
+            "Hora inválida! Siga o padrão 24 horas (HH:MM)."
+        )
+        if not hora: return None, None
+        
+        dh_obj = datetime.datetime.strptime(f"{data} {hora}", "%d/%m/%Y %H:%M")
+        if dh_obj < datetime.datetime.now():
+            print("Erro: Não é permitido cadastrar demandas com data ou hora retroativas ao sistema.\n")
+            tentativas += 1
+        else:
+            return data, hora
+            
+    while True:
+        escolha = input("Você errou 3 vezes nos prazos. Deseja encerrar o programa? (Sim/S ou Não/N): ").strip().upper()
+        if escolha in ['S', 'SIM']:
+            print("Encerrando o sistema...")
+            sys.exit()
+        elif escolha in ['N', 'NAO', 'NÃO']:
+            return None, None
+        else:
+            print("Resposta inválida.")
+
+
+# ==========================================
+# MÓDULO DE INTERFACE VISUAL
+# ==========================================
+def exibir_tela_principal(demandas_pendentes: List[dict]) -> None:
+    """
+    Renderiza o painel principal do sistema contendo o cabeçalho, o menu de opções 
+    e a tabela sempre ativa de demandas pendentes.
+
+    Args:
+        demandas_pendentes (list): Lista das demandas ativas organizadas.
+    """
+    limpar_tela()
+    agora_obj = datetime.datetime.now()
+    agora_str = agora_obj.strftime("%d/%m/%Y %H:%M:%S")
+    
+    print("="*85)
+    print("                              AGENDA ELETRÔNICA")
+    print("                     Criado por: marinaldosouza@gmail.com")
+    print(f"                         Data e Hora Atual: {agora_str}")
+    print("="*85)
+    
+    print("\n--- MENU PRINCIPAL ---")
+    print(" 1 - Cadastrar nova demanda")
+    print(" 2 - Visualizar demandas pendentes")
+    print(" 3 - Executar demanda")
+    print(" 4 - Excluir demanda")
+    print(" 5 - Histórico (Demandas executadas/excluídas)")
+    print(" 6 - Sair do sistema")
+    
+    print("\n" + "="*85)
+    print("--- DEMANDAS PENDENTES ---")
+    if not demandas_pendentes:
+        print(" Nenhuma demanda pendente no momento.")
+    else:
+        print(f" {'ID':<3} | {'Data':<10} | {'Hora':<5} | {'Demanda'}")
+        print("-" * 85)
+        for i, demanda in enumerate(demandas_pendentes):
+            dh_obj = datetime.datetime.strptime(f"{demanda['data_execucao']} {demanda['hora_execucao']}", "%d/%m/%Y %H:%M")
+            
+            prefixo = "[ATRASADA] " if dh_obj < agora_obj else ""
+            detalhes = prefixo + demanda['Detalhes_execucao']
+            det_exibicao = detalhes[:52] + "..." if len(detalhes) > 55 else detalhes
+            
+            print(f" {i:<3} | {demanda['data_execucao']:<10} | {demanda['hora_execucao']:<5} | {det_exibicao}")
+    print("="*85 + "\n")
+
+def exibir_historico(historico_demandas: List[dict]) -> None:
+    """
+    Renderiza a tabela de histórico de demandas finalizadas (executadas ou excluídas).
+
+    Args:
+        historico_demandas (list): Lista contendo os registros do histórico.
+    """
+    limpar_tela()
+    print("="*100)
+    print("--- HISTÓRICO DE DEMANDAS ---")
+    if not historico_demandas:
+        print("\nO histórico está vazio.")
+    else:
+        print(f" {'Data':<10} | {'Hora':<5} | {'Demanda':<55} | {'Status'}")
+        print("-" * 100)
+        for d in historico_demandas:
+            detalhes = d['Detalhes_execucao']
+            det_exibicao = detalhes[:52] + "..." if len(detalhes) > 55 else detalhes
+            print(f" {d['data_execucao']:<10} | {d['hora_execucao']:<5} | {det_exibicao:<55} | {d['status']}")
+    print("\n" + "="*100)
+
+
+# ==========================================
+# MÓDULO PRINCIPAL (FLUXO DO PROGRAMA)
+# ==========================================
+def main() -> None:
+    """Função principal responsável pelo laço de repetição e roteamento das ações do usuário."""
+    agenda = Agenda()
+    
+    while True:
+        pendentes = agenda.obter_pendentes_ordenadas()
+        exibir_tela_principal(pendentes)
+        
+        opcao = input("Escolha o número da opção desejada: ").strip()
+
+        if opcao == '1':
+            print("\n--- CADASTRO DE DEMANDA ---")
+            data, hora = coletar_data_hora_futura()
+            if not data or not hora: 
+                continue 
+            
+            detalhes = input("Informe os detalhes da demanda (máximo 200 caracteres): ").strip()
+            agenda.adicionar_demanda(data, hora, detalhes)
+            print("Demanda cadastrada com sucesso!")
+            input("Pressione ENTER para continuar...")
+
+        elif opcao == '2':
+            print("Você já está visualizando as demandas no painel abaixo do menu.")
+            input("Pressione ENTER para continuar...")
+
+        elif opcao == '3':
+            if not agenda.demandas_pendentes:
+                print("\nNão há demandas para executar.")
+            else:
+                idx = input("\nDigite o ID da demanda que deseja EXECUTAR: ").strip()
+                if idx.isdigit() and agenda.executar_demanda(int(idx)):
+                    print(f"Demanda {idx} marcada como EXECUTADA com sucesso!")
+                else:
+                    print("Número de ID inválido.")
+            input("Pressione ENTER para continuar...")
+
+        elif opcao == '4':
+            if not agenda.demandas_pendentes:
+                print("\nNão há demandas para excluir.")
+            else:
+                idx = input("\nDigite o ID da demanda que deseja EXCLUIR: ").strip()
+                if idx.isdigit() and agenda.excluir_demanda(int(idx)):
+                    print(f"Demanda {idx} foi EXCLUÍDA com sucesso!")
+                else:
+                    print("Número de ID inválido.")
+            input("Pressione ENTER para continuar...")
+
+        elif opcao == '5':
+            exibir_historico(agenda.obter_historico())
+            input("Pressione ENTER para voltar ao menu principal...")
+
+        elif opcao == '6':
+            print("\nEncerrando o sistema...")
+            sys.exit()
+
+        else:
+            print("\nOpção inválida! Por favor, escolha um número de 1 a 6.")
+            input("Pressione ENTER para continuar...")
+
+if __name__ == "__main__":
+    main()
