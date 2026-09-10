@@ -2,15 +2,15 @@
 Módulo de Simulação de Caixa Eletrônico (Saque)
 
 Este script simula a lógica de um caixa eletrônico para saques em dinheiro. 
-Ele recebe um valor do usuário, valida a entrada e calcula a menor 
-quantidade possível de cédulas para compor o valor desejado usando 
-um algoritmo de Programação Dinâmica (semelhante ao "Coin Change Problem").
+Ele recebe um valor do usuário, valida a entrada de forma segura e calcula 
+a menor quantidade possível de cédulas utilizando um Algoritmo Guloso 
+otimizado (complexidade de tempo e espaço O(1)).
 """
 
 # Constantes de configuração do caixa eletrônico
-CEDULAS = (100, 50, 20, 10, 5, 2)  # Cédulas disponíveis no caixa
-LIMITE_SAQUE = 20_000              # Valor máximo permitido por saque
-MAX_TENTATIVAS = 3                 # Número máximo de tentativas de entrada inválida
+CEDULAS_DISPONIVEIS = (100, 50, 20, 10, 5, 2)  # Cédulas no cofre
+LIMITE_SAQUE = 20_000                          # Valor máximo permitido por saque
+MAX_TENTATIVAS = 3                             # Número máximo de tentativas de entrada
 
 
 def formatar_reais(valor):
@@ -28,10 +28,12 @@ def formatar_reais(valor):
 
 def calcular_cedulas(valor):
     """
-    Calcula a menor quantidade de cédulas necessárias para um dado valor.
+    Calcula a menor quantidade de cédulas utilizando um Algoritmo Guloso.
     
-    Utiliza Programação Dinâmica para testar as combinações possíveis.
-    Como não há cédula de R$ 1, alguns valores (ex: 1, 3) são impossíveis.
+    Como a nota de R$ 5 é a única cédula ímpar, ela é separada logo no 
+    início se o valor total for ímpar. O restante (que obrigatoriamente 
+    será par) é dividido de forma sequencial pelas notas pares disponíveis, 
+    garantindo uso de memória constante e execução instantânea.
     
     Args:
         valor (int): O valor desejado para o saque.
@@ -39,42 +41,31 @@ def calcular_cedulas(valor):
     Returns:
         dict: Um dicionário onde as chaves são os valores das cédulas 
               e os valores são as quantidades necessárias.
-        None: Se for impossível compor o valor com as cédulas disponíveis.
+        None: Se for impossível compor o valor (ex: R$ 1 ou R$ 3).
     """
-    # minimo[i] guardará a quantidade mínima de cédulas para o valor 'i'.
-    # Inicializado com infinito, pois ainda não sabemos a quantidade.
-    minimo = [float("inf")] * (valor + 1)
-    
-    # ultima_cedula[i] guardará o valor da última cédula adicionada para formar o valor 'i'.
-    ultima_cedula = [0] * (valor + 1)
-    
-    # Para o valor 0, precisamos de 0 cédulas.
-    minimo[0] = 0
-
-    # Constrói a solução de baixo para cima (bottom-up)
-    for total in range(1, valor + 1):
-        for cedula in CEDULAS:
-            if cedula <= total:
-                # Quantidade se usarmos esta cédula + o que já calculamos para o restante
-                quantidade = minimo[total - cedula] + 1
-
-                # Se for a melhor (menor) quantidade encontrada até agora, atualizamos
-                if quantidade < minimo[total]:
-                    minimo[total] = quantidade
-                    ultima_cedula[total] = cedula
-
-    # Se o valor final continuou infinito, não há combinação possível
-    if minimo[valor] == float("inf"):
+    # 1 e 3 são os únicos valores inteiros matematicamente impossíveis 
+    # de serem formados com as cédulas de 100, 50, 20, 10, 5 e 2.
+    if valor == 1 or valor == 3:
         return None
 
-    # Reconstrói a solução a partir do array ultima_cedula
     resultado = {}
-    restante = valor
 
-    while restante:
-        cedula = ultima_cedula[restante]
-        resultado[cedula] = resultado.get(cedula, 0) + 1
-        restante -= cedula
+    # Se o valor for ímpar, obrigatoriamente usamos uma (e apenas uma) nota de 5.
+    if valor % 2 != 0:
+        resultado[5] = 1
+        valor -= 5
+
+    # Com o valor par garantido, aplicamos divisões exatas do maior para o menor.
+    cedulas_pares = (100, 50, 20, 10, 2)
+
+    for cedula in cedulas_pares:
+        if valor >= cedula:
+            # Pega a maior quantidade inteira possível desta cédula
+            quantidade = valor // cedula
+            resultado[cedula] = quantidade
+            
+            # O valor restante passa a ser o resto dessa divisão
+            valor %= cedula
 
     return resultado
 
@@ -94,16 +85,16 @@ def validar_saque(entrada):
     """
     entrada = entrada.strip()
 
-    # Validação básica de tipo e formato (evita letras, símbolos, decimais ou números negativos)
+    # Validação básica de tipo e formato (evita letras, símbolos, decimais ou negativos)
     if not entrada or not entrada.isascii() or not entrada.isdigit():
         return None, None, "Formato inválido. Digite apenas números inteiros."
 
-    # Remove zeros à esquerda. Se ficar vazio, assume "0"
+    # Remove zeros à esquerda. Se a string ficar vazia, assume "0"
     entrada = entrada.lstrip("0") or "0"
     limite = str(LIMITE_SAQUE)
 
-    # Validação de limite via strings (evita estourar memória ou lentidão 
-    # se o usuário digitar uma string de milhares de dígitos)
+    # Validação de limite via strings
+    # Evita sobrecarga de memória caso o usuário insira uma string colossal
     if (
         len(entrada) > len(limite)
         or (len(entrada) == len(limite) and entrada > limite)
@@ -119,10 +110,10 @@ def validar_saque(entrada):
     if valor == 0:
         return None, None, "O valor deve ser maior que zero."
 
-    # Se chegou aqui, a entrada é válida. Tenta calcular as cédulas.
+    # Se a entrada é válida, tenta calcular as cédulas
     quantidades = calcular_cedulas(valor)
 
-    # Verifica se o algoritmo de PD encontrou uma combinação válida
+    # Verifica se a matemática permitiu a combinação
     if quantidades is None:
         return None, None, (
             "Não é possível sacar esse valor com as cédulas disponíveis."
@@ -133,9 +124,9 @@ def validar_saque(entrada):
 
 def main():
     """
-    Função principal que gerencia o fluxo de interação com o usuário.
-    Gerencia as tentativas, exibe os resultados no terminal e trata 
-    interrupções inesperadas (como Ctrl+C).
+    Função principal que gerencia o fluxo de interação no terminal.
+    Controla as tentativas, exibe os resultados formatados e trata 
+    interrupções inesperadas (como Ctrl+C) de forma amigável.
     """
     for tentativa in range(1, MAX_TENTATIVAS + 1):
         try:
@@ -143,18 +134,18 @@ def main():
                 "\nDigite o valor do saque em reais inteiros (ex.: 1500): "
             )
         except (EOFError, KeyboardInterrupt):
-            # Captura se o usuário fechar o terminal abruptamente ou usar Ctrl+C
+            # Encerra graciosamente se o usuário fechar o terminal de repente
             print("\nOperação cancelada.")
             return
 
-        # Chama a validação e processamento
+        # Executa a validação e o cálculo matemático
         valor, quantidades, erro = validar_saque(entrada)
 
-        # Se não houver erro, a transação foi aprovada
+        # Transação aprovada
         if erro is None:
             print("\nQuantidade de cédulas:")
 
-            # Imprime as cédulas ordenadas da maior para a menor
+            # Exibe as cédulas sempre ordenadas da nota maior para a menor
             for cedula in sorted(quantidades, reverse=True):
                 print(
                     f"{quantidades[cedula]} cédula(s) "
@@ -165,15 +156,15 @@ def main():
             print("Valor restante: R$ 0,00")
             return
 
-        # Caso haja erro de validação, imprime a mensagem
+        # Transação negada (erro de digitação, valor impossível ou acima do limite)
         print(erro)
 
-        # Informa quantas tentativas ainda restam antes do bloqueio
+        # Informa o saldo de tentativas para o usuário
         restantes = MAX_TENTATIVAS - tentativa
         if restantes:
             print(f"Tentativas restantes: {restantes}")
 
-    # Atingiu o número máximo de tentativas
+    # Bloqueio após falhas consecutivas
     print(
         "\nPor motivo de segurança, a operação será abortada. "
         "Você deverá tentar de novo."
