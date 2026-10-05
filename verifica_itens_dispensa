@@ -1,0 +1,128 @@
+"""
+Gerenciador de Lista de Compras / Itens.
+
+Este módulo permite a coleta de itens via linha de comando (CLI), 
+garantindo que não haja duplicatas, ignorando sensibilidade de caixa 
+(maiúsculas/minúsculas) e acentuação. Inclui proteção contra loops de 
+repetição do usuário e exibe os dados de forma ordenada.
+
+Dependências:
+    - unicodedata (Built-in)
+    - os (Built-in)
+"""
+
+import unicodedata
+import os
+from typing import Set
+
+def limpar_tela() -> None:
+    """
+    Limpa a tela do terminal independentemente do sistema operacional.
+
+    Utiliza comandos nativos do sistema operacional ('cls' para 
+    ambientes Windows e 'clear' para sistemas baseados em Unix).
+    """
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+
+def remover_acentos(texto: str) -> str:
+    """
+    Remove todos os acentos e marcas diacríticas de uma string.
+
+    Args:
+        texto (str): A string original que contém ou não acentos.
+
+    Returns:
+        str: A string formatada apenas com os caracteres base ASCII.
+    """
+    texto_normalizado = unicodedata.normalize('NFD', texto)
+    texto_limpo = ''.join(c for c in texto_normalizado if unicodedata.category(c) != 'Mn')
+    return texto_limpo
+
+
+def obter_itens() -> Set[str]:
+    """
+    Coleta e sanitiza a entrada do usuário para construir um conjunto de itens.
+
+    A função aplica regras de negócio estritas:
+    1. Remove espaços em branco nas extremidades.
+    2. Remove acentos e padroniza a primeira letra em maiúscula.
+    3. Bloqueia duplicatas utilizando estrutura de dados Set (O(1)).
+    4. Adverte o usuário na 3ª tentativa de inserir um item já existente,
+       oferecendo a opção de interrupção do laço.
+
+    Returns:
+        Set[str]: Conjunto contendo todos os itens únicos e sanitizados.
+    """
+    itens: Set[str] = set()
+    contagem_tentativas: dict[str, int] = {}
+    
+    print("Digite os itens para adicionar à lista (ou 'sair' para encerrar):")
+    
+    while True:
+        entrada = input("> ").strip()
+        
+        if entrada.lower() == 'sair':
+            break
+            
+        if not entrada:
+            continue
+            
+        item = remover_acentos(entrada).capitalize()
+        
+        contagem_tentativas[item] = contagem_tentativas.get(item, 0) + 1
+        
+        if contagem_tentativas[item] == 3:
+            print(f"\n⚠️ Aviso: Você já tentou inserir '{item}' 3 vezes!")
+            
+            while True:
+                escolha = input("Deseja encerrar ou continuar? (E para encerrar / C para continuar): ").strip().upper()
+                if escolha in ['E', 'C']:
+                    break
+                print("Opção inválida. Digite 'E' ou 'C'.")
+                
+            if escolha == 'E':
+                return itens
+            else:
+                print("Continuando...\n")
+                continue
+        
+        if item in itens:
+            print(f"O item '{item}' já existe na lista.")
+        else:
+            itens.add(item)
+            print(f"Item '{item}' adicionado.")
+            
+    return itens
+
+
+def exibir_lista(itens: Set[str]) -> None:
+    """
+    Imprime os itens no terminal de forma ordenada (alfabética).
+
+    Args:
+        itens (Set[str]): O conjunto de itens únicos a ser exibido.
+    """
+    if not itens:
+        print("A lista está vazia.")
+        return
+        
+    print("Lista de itens (em ordem alfabética):")
+    for item in sorted(itens):
+        print(f"- {item}")
+
+
+def main() -> None:
+    """
+    Função orquestradora principal.
+    
+    Gerencia o fluxo de execução: coleta de dados, limpeza do terminal
+    e apresentação dos resultados.
+    """
+    lista_final = obter_itens()
+    limpar_tela()
+    exibir_lista(lista_final)
+
+
+if __name__ == "__main__":
+    main()
