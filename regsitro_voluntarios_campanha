@@ -1,0 +1,110 @@
+"""
+Módulo de Gestão de Voluntários.
+Permite o registo de voluntários, tratando repetições (pedindo apelidos/sobrenomes),
+ignorando formatações incorretas ou acentos, e exibindo a lista final ordenada.
+"""
+
+import unicodedata
+import os
+from typing import List, Dict
+
+def limpar_ecra() -> None:
+    """Limpa o ecrã do terminal (Windows, Linux, Mac)."""
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def formatar_chave(texto: str) -> str:
+    """
+    Remove acentos, espaços extras e converte para minúsculas.
+    Cria uma chave de identificação única e à prova de falhas de digitação.
+    """
+    texto_normalizado = unicodedata.normalize('NFD', texto)
+    texto_limpo = ''.join(c for c in texto_normalizado if unicodedata.category(c) != 'Mn')
+    return texto_limpo.strip().lower()
+
+def formatar_exibicao(texto: str) -> str:
+    """Formata o nome para exibição (ex: 'joão silva' -> 'João Silva')."""
+    return ' '.join(palavra.capitalize() for palavra in texto.split())
+
+def gerir_insercao_voluntarios() -> List[str]:
+    """
+    Controla o fluxo principal de inserção de dados.
+    Usa um dicionário onde:
+    Chave = Nome normalizado (sem acentos/minúsculo)
+    Valor = Nome real bem formatado
+    """
+    voluntarios_registados: Dict[str, str] = {}
+    
+    print("Registo de Voluntários. (Digite 'sair' a qualquer momento para terminar)")
+    
+    while True:
+        entrada = input("\nNome do voluntário: ").strip()
+        
+        if entrada.lower() == 'sair':
+            break
+            
+        if not entrada:
+            continue
+            
+        chave_nome = formatar_chave(entrada)
+        nome_exibicao = formatar_exibicao(entrada)
+        
+        # O voluntário ainda não existe
+        if chave_nome not in voluntarios_registados:
+            voluntarios_registados[chave_nome] = nome_exibicao
+            print(f"✅ Voluntário '{nome_exibicao}' adicionado.")
+            continue
+            
+        # O voluntário JÁ existe: Iniciar protocolo de resolução de conflitos
+        print(f"⚠️ Aviso: O voluntário '{nome_exibicao}' já está na lista.")
+        tentativas = 0
+        resolvido = False
+        
+        while tentativas < 3 and not resolvido:
+            apelido = input(f"Digite um apelido/sobrenome para distinguir o novo '{nome_exibicao}' (ou 'sair'): ").strip()
+            
+            if apelido.lower() == 'sair':
+                return list(voluntarios_registados.values())
+                
+            if not apelido:
+                tentativas += 1
+                continue
+                
+            nova_chave = chave_nome + " " + formatar_chave(apelido)
+            novo_nome_exibicao = nome_exibicao + " " + formatar_exibicao(apelido)
+            
+            if nova_chave in voluntarios_registados:
+                print(f"❌ O nome '{novo_nome_exibicao}' também já existe.")
+                tentativas += 1
+            else:
+                voluntarios_registados[nova_chave] = novo_nome_exibicao
+                print(f"✅ Voluntário '{novo_nome_exibicao}' adicionado com sucesso.")
+                resolvido = True
+                
+        if not resolvido:
+            print("❌ Número máximo de 3 tentativas atingido. Registo cancelado para este utilizador.")
+
+    # Retorna apenas a lista de nomes já formatados para a exibição
+    return list(voluntarios_registados.values())
+
+def exibir_voluntarios(voluntarios: List[str]) -> None:
+    """Limpa o ecrã e exibe os voluntários por ordem alfabética."""
+    limpar_ecra()
+    print("===============================")
+    print("     LISTA DE VOLUNTÁRIOS      ")
+    print("===============================")
+    
+    if not voluntarios:
+        print("Nenhum voluntário registado.")
+        return
+        
+    for voluntario in sorted(voluntarios):
+        print(f"- {voluntario}")
+    print("\n")
+
+def main() -> None:
+    """Função principal que orquestra a execução dos módulos."""
+    lista_final = gerir_insercao_voluntarios()
+    exibir_voluntarios(lista_final)
+
+if __name__ == "__main__":
+    main()
